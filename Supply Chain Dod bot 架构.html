@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>duty-robot 的架构与关键设计 v1.17</title>
+<style>
+:root{
+  --bg:#e9e9e9; --panel:#ffffff; --ink:#222222; --muted:#666666; --line:#cfcfcf;
+  --accent:#EE4D2D; --accent-soft:#FDEEEA; --ok:#8c8c8c; --ok-soft:#f4f4f4;
+  --warn:#EE4D2D; --warn-soft:#FFF6F2; --red:#EE4D2D; --red-soft:#FDEEEA;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;overflow:hidden}
+.stage{position:absolute;left:50%;top:50%;width:960px;height:540px;background:#fff;transform-origin:center center;transform:translate(-50%,-50%) scale(var(--k,1));box-shadow:0 2px 18px rgba(0,0,0,.18);overflow:hidden}
+.deck{position:absolute;inset:0}
+.slide{position:absolute;inset:0;display:none;padding:0 36px 40px;overflow:hidden}
+.slide.active{display:flex;flex-direction:column}
+.hd{flex:none;display:flex;align-items:center;gap:10px;height:40px;margin-top:16px;margin-left:79px;margin-right:9px;border-bottom:2px solid var(--accent)}
+.hd .sec,.hd .ttl{font-size:22px;font-weight:700;color:var(--accent);white-space:nowrap}
+.hd .sep{width:1.5px;height:20px;background:var(--accent);opacity:.55}
+.hd .meta{margin-left:auto;font-size:11px;color:#8a8a8a;white-space:nowrap}
+.lead{font-size:14px;font-weight:700;line-height:1.5;margin:9px 0 5px;flex:none}
+.sub{font-size:12px;color:var(--muted);margin:0 0 5px;line-height:1.5;flex:none}
+.body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;justify-content:flex-start;padding-top:2px}
+.row{display:grid;gap:8px}
+.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.c3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.c4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.c5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:7px 10px;font-size:12px;line-height:1.55}
+.card h3{margin:0 0 4px;font-size:13px}
+.card .n{display:inline-block;width:1.7em;height:1.7em;line-height:1.7em;text-align:center;border-radius:50%;background:var(--accent);color:#fff;font-size:.8em;margin-right:5px}
+.card.hl{border-color:var(--accent);background:var(--accent-soft)}
+.card.ok{border-color:#c4c4c4;background:var(--ok-soft)}
+.card.warn{border-left:3px solid var(--accent);background:#fff}
+.card.red{border-color:#f3b4a6;background:var(--accent-soft)}
+.muted{color:var(--muted)}
+.small{font-size:11px}
+.pill{display:inline-block;padding:0 7px;border-radius:2px;font-size:.85em;border:1px solid var(--line);color:var(--muted);margin-right:3px;white-space:nowrap}
+.pill.ok{color:#555;border-color:#aaa;background:#f4f4f4}
+.pill.warn{color:var(--accent);border-color:var(--accent)}
+.pill.skip{color:#999;border-style:dashed}
+.time{font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:11.5px;line-height:1.5;background:#fff;border:1px solid #d6d6d6}
+th,td{padding:4px 8px;text-align:left;vertical-align:top;border:1px solid #e0e0e0}
+th{background:var(--accent);color:#fff;font-weight:700;border-color:#e8664a}
+td.c,th.c{text-align:center}
+.scroll-x{overflow:hidden;flex:none}
+.quote{border-left:3px solid var(--accent);padding:4px 10px;color:var(--muted);font-size:12px;line-height:1.55;background:#fafafa}
+.big{font-size:16px;line-height:1.5;font-weight:700}
+code{background:#f1f1f1;padding:0 4px;border-radius:2px;font-size:.92em}
+.placeholder{border:1.5px dashed var(--accent);background:var(--warn-soft);color:var(--accent);border-radius:2px;padding:8px;text-align:center;font-size:12.5px}
+ul{margin:2px 0 0;padding-left:1.15em}
+li{margin:1px 0}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;position:relative;padding:4px 8px 4px 34px;margin:4px 0;background:#fff;border:1px solid var(--line);border-radius:2px;font-size:12px;line-height:1.5}
+.steps li::before{content:counter(s);position:absolute;left:8px;top:5px;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:var(--accent);color:#fff;font-size:10.5px}
+.dg{width:100%;height:auto;max-height:300px;display:block}
+.dg text{fill:var(--ink);font-size:15px;text-anchor:middle;font-family:inherit}
+.dg .s{font-size:12.5px;fill:var(--muted)}
+.dg .b{font-weight:700}
+.dg .l{text-anchor:start}
+.dg .bx{fill:#fff;stroke:#b9b9b9;stroke-width:1.4}
+.dg .bx.a{fill:var(--accent-soft);stroke:var(--accent)}
+.dg .bx.g{fill:#f4f4f4;stroke:#9a9a9a}
+.dg .bx.w{fill:var(--warn-soft);stroke:#f0a08c}
+.dg .bx.r{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:5 4}
+.dg .bx.z{fill:none;stroke-dasharray:6 5}
+.dg .ln{stroke:#777;stroke-width:1.5;fill:none}
+.dg .ln.d{stroke-dasharray:6 5}
+.dg .ln.r{stroke:var(--accent)}
+.dg .dot{fill:var(--accent)}
+.ahp{fill:#777}
+.ft{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:9.5px;color:#9a9a9a}
+.pg{position:absolute;right:14px;bottom:12px;font-size:9.5px;color:#9a9a9a}
+.bar{position:fixed;top:0;left:0;height:3px;background:var(--accent);z-index:6;transition:width .2s}
+.nav{position:fixed;left:0;right:0;bottom:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:#777;z-index:5;opacity:0;transition:opacity .2s}
+.nav:hover{opacity:1}
+.nav button{background:#fff;color:#222;border:1px solid #bbb;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px}
+.nav button:hover{border-color:var(--accent)}
+.notes{position:fixed;left:0;right:0;bottom:34px;max-height:36vh;overflow:auto;background:#fff;border-top:2px solid var(--accent);padding:12px 6vw;font-size:15px;line-height:1.65;display:none;z-index:7}
+.notes.show{display:block}
+.dg .nm{fill:#E6F5EC;stroke:#3D9970;stroke-width:1.3}
+.dg .ng{fill:#fff;stroke:#2F5BD0;stroke-width:1.3}
+.dg .ns{fill:#FDECD3;stroke:#E6A23C;stroke-width:1.3}
+.dg .nu{fill:#fff;stroke:#1F3A93;stroke-width:1.5}
+.dg .nt{fill:#fff;stroke:#888;stroke-width:1.2}
+.dg .band{fill:#E3E8F7}
+.dg .sepv{stroke:#e0e0e0;stroke-dasharray:3 4;stroke-width:1}
+.dg .lp{stroke:#D6336C;stroke-width:1.3;stroke-dasharray:5 3;fill:none}
+.dg text.tm{fill:#1d5c3e;font-weight:600;font-size:11.5px}
+.dg text.tg{fill:#2F5BD0;font-weight:600;font-size:11.5px}
+.dg text.ts{fill:#8a5a00;font-weight:600;font-size:11px}
+.dg text.tu{fill:#1F3A93;font-weight:600;font-size:11.5px}
+.dg text.tt{fill:#555;font-size:11.5px}
+.dg text.tb{fill:#26357f;font-weight:700;font-size:10.5px;text-anchor:start}
+.dg text.tr{fill:#D6336C;font-size:9.5px}
+.dg text.tn{fill:#888;font-size:9.5px}
+.dg text.tl{fill:#D6336C;font-size:11px;font-weight:700}
+.ahr{fill:#D6336C}
+.lg{display:flex;gap:14px;align-items:center;font-size:10.5px;color:#555;margin:0 0 4px;flex:none}
+.lg .it{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.lg i{display:inline-block;width:16px;height:9px;border:1.3px solid;border-radius:2px}
+.lg b{display:inline-block;width:20px;border-top:1.5px solid #333}
+.lg u{display:inline-block;width:20px;border-top:1.5px dashed #D6336C;text-decoration:none}
+.sn{display:flex;gap:4px;align-items:center;margin-left:auto;font-size:10px;white-space:nowrap}
+.sn span{padding:1px 7px;border:1px solid #cfcfcf;border-radius:2px;color:#9a9a9a}
+.sn span.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.sn + .meta{margin-left:12px}
+.fl{display:flex;align-items:stretch;flex:none}
+.fl .fb{flex:1;border:1.3px solid;border-radius:5px;padding:4px 6px;font-size:10.5px;text-align:center;font-weight:700;line-height:1.35;background:#E6F5EC;border-color:#3D9970;color:#14532D}
+.fl .fb small{display:block;font-weight:400;color:#555;font-size:9.5px}
+.fl .fb.g{background:#fff;border-color:#2F5BD0;color:#1D3FA8}
+.fl .fb.s{background:#FDECD3;border-color:#E6A23C;color:#8A5A00}
+.fl .fb.u{background:#fff;border-color:#1F3A93;color:#1F3A93}
+.fl i{align-self:center;padding:0 3px;color:#888;font-style:normal;font-size:11px}
+.mx td:first-child{font-weight:700;background:#f6f6f6;white-space:nowrap}
+.dg.sm text{font-size:11.5px}
+.dg.sm .s{font-size:10px}
+.dg.sm .b{font-size:11.5px}
+.dg.lane text{font-size:9.5px}
+.dg.lane text.tm,.dg.lane text.tg,.dg.lane text.ts,.dg.lane text.tu,.dg.lane text.tt{font-size:8.6px}
+.dg.lane text.tl{font-size:9.5px}
+.dg text.hl{paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.dg .opt{stroke-dasharray:4 3}
+.dg .lane0{fill:#fff;stroke:#dcdcdc;stroke-width:1}
+.dg .lane1{fill:#f8f8f8;stroke:#dcdcdc;stroke-width:1}
+.dg .ph{fill:#E3E8F7;stroke:#C7D0EE;stroke-width:1}
+.dg text.pht{fill:#26357F;font-weight:700;font-size:11px}
+.dg text.ln{fill:#333;font-weight:700;font-size:10.5px}
+.tight .card{padding:5px 9px;font-size:11px;line-height:1.5}
+.tight .card h3{font-size:12px;margin-bottom:2px}
+.tight ul{margin:1px 0 0}
+.tight li{margin:0}
+.logo{position:absolute;left:8px;top:8px;width:100px;height:58px;z-index:4;pointer-events:none}
+.toc td,.toc th{padding:9px 14px}
+.subh{font-size:13px;font-weight:700;color:var(--accent);border-left:3px solid var(--accent);padding-left:8px;margin:2px 0 0;flex:none}
+.rg{display:grid;grid-template-columns:54px repeat(4,1fr);gap:5px;font-size:10.6px;line-height:1.45;flex:none}
+.rg>div{border:1px solid #e0e0e0;border-radius:3px;padding:3px 6px;background:#fff}
+.rg .h{color:#fff;font-weight:700;font-size:12.5px;text-align:center;border:0;padding:4px 2px}
+.rg .h small{display:block;font-weight:400;font-size:9.4px;opacity:.9}
+.rg .l{background:#f3f3f3;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;border-color:#e6e6e6}
+.rg ul{margin:0;padding-left:11px}
+.rg li{margin:0}
+.rg .pm{background:#2F5BD0}.rg .dv{background:#3D9970}.rg .qa{background:#E0A13A}.rg .mg{background:#7B3FA0}
+.cs{display:grid;grid-template-columns:1fr 18px 1fr;gap:6px;align-items:stretch;flex:none;margin:9px 0 4px}
+.cs .c,.cs .s{padding:5px 10px;font-size:12px;line-height:1.5;border-radius:2px}
+.cs .c{background:#f4f4f4;border-left:3px solid #9a9a9a}
+.cs .s{background:var(--accent-soft);border-left:3px solid var(--accent)}
+.cs .c b{color:#555}.cs .s b{color:var(--accent)}
+.cs .ar{display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:700;font-size:15px}
+.gold{font-size:18px;font-weight:800;color:var(--accent);margin:7px 0 3px;flex:none;letter-spacing:.02em;line-height:1.3}
+.gold small{font-size:12px;color:#666;font-weight:400;margin-left:12px;letter-spacing:0}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}
+.cmp>div{font-size:11.5px;padding:5px 10px;line-height:1.5;border-radius:2px}
+.cmp .o{background:#f4f4f4;color:#666;border-left:3px solid #bbb}
+.cmp .n{background:var(--accent-soft);border-left:3px solid var(--accent)}
+.cmp b{margin-right:4px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex:none;font-size:11px}
+.chips .t{font-weight:700;color:#444;margin-right:2px}
+.chip{border:1.2px solid #bbb;border-radius:12px;padding:1px 9px;background:#fff;white-space:nowrap}
+.chip.dv{border-color:#3D9970;background:#E6F5EC}.chip.qa{border-color:#E0A13A;background:#FDF0D6}.chip.mg{border-color:#7B3FA0;background:#EFE5F5}.chip.ac{border-color:var(--accent);background:var(--accent-soft)}
+.cs.one .c,.cs.one .s{padding:4px 10px}
+
+.dm{display:grid;grid-template-columns:104px 126px 32px 1fr;column-gap:6px;row-gap:3px;align-items:center;font-size:10.5px;line-height:1.2}
+.dm i{display:block;height:10px;background:#f3b4a6;border-radius:2px;overflow:hidden}
+.dm i u{display:block;height:100%;background:#3D9970;text-decoration:none}
+.dm .ct{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.dm .ms{color:var(--accent)}
+.dm .ex{color:#888;font-size:9.5px;white-space:nowrap}
+.slide.cover{padding:0;align-items:center;background:#fff}
+.slide.cover.active{display:flex;flex-direction:column;align-items:center}
+.cover .logos{display:flex;gap:26px;align-items:center;margin-top:92px;height:88px}
+.cover .logos img{height:88px;width:auto;display:block}
+.cover h1{margin:62px 0 0;font-size:38px;line-height:1.38;font-weight:700;color:var(--accent);text-align:center;letter-spacing:.02em}
+.cover .cv-sub{margin:44px 0 0;font-size:19px;color:#111}
+.cover .cv-date{margin:12px 0 0;font-size:13px;color:#666}
+.cover .cv-bar{position:absolute;left:0;right:0;bottom:0;height:50px;background:var(--accent)}
+.cover .cv-bar i{position:absolute;top:0;right:0;bottom:0;width:17.6%;background:#0046EC}
+.stage.on-cover .logo,.stage.on-cover .ft,.stage.on-cover .pg{display:none}
+.roomy .card{font-size:12.5px;line-height:1.6}
+.roomy .card h3{font-size:13.5px}
+.roomy table{font-size:12px !important;line-height:1.55 !important}
+.roomy .fl .fb{font-size:12.5px}
+.roomy .fl .fb small{font-size:10.8px}
+.roomy .steps li{font-size:12.5px}
+.roomy .quote,.roomy .cmp>div{font-size:12.5px}
+.roomy .small{font-size:11.5px}
+
+.hd{margin-left:0}
+.hd .meta{font-size:11px}
+.col{display:flex;flex-direction:column;gap:5px;position:relative}
+.col .fb2{border:1.3px solid;border-radius:5px;padding:5px 6px;font-size:12px;text-align:center;font-weight:700;line-height:1.35}
+.col .fb2 small{display:block;font-weight:400;font-size:10px;color:#555}
+.col .fb2.g0{background:#f4f4f4;border-color:#9a9a9a;color:#333}
+.col .fb2.g1{background:#fff;border-color:#2F5BD0;color:#1D3FA8}
+.col .fb2.g2{background:#EEF1F7;border-color:#26357F;color:#26357F}
+.col .fb2.g3{background:#E6F5EC;border-color:#3D9970;color:#14532D}
+.col .fb2.g4{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.col .fb2.g5{background:#FDECD3;border-color:#E6A23C;color:#8A5A00}
+.col ul{font-size:10.8px;line-height:1.45;padding-left:1.05em;margin:0}
+.col:not(:last-child)::after{content:"\25B6";position:absolute;right:-9px;top:12px;font-size:9px;color:#888}
+.arch{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;flex:none}
+.tag2{display:inline-block;font-size:10px;font-weight:700;border-radius:2px;padding:0 6px;margin-right:4px;color:#fff;background:var(--accent)}
+.tag2.g{background:#8c8c8c}
+.rt{display:flex;gap:8px;flex:none}
+.rt>div{flex:1}
+.todo{border:1.5px dashed var(--accent);background:var(--warn-soft);color:var(--accent);border-radius:2px;padding:4px 8px;font-size:11px}
+.bs .card{font-size:13px;line-height:1.6;padding:8px 12px}
+.bs .card h3{font-size:14.5px;margin-bottom:5px}
+.bs .subh{font-size:14.5px}
+.bs table{font-size:12.5px;line-height:1.6}
+.bs th,.bs td{padding:6px 9px}
+.bs .fl .fb{font-size:13.5px;padding:8px 6px}
+.bs .fl .fb small{font-size:11.5px;margin-top:3px}
+.bs .cmp>div,.bs .cs .c,.bs .cs .s,.bs .quote{font-size:13px;line-height:1.6;padding:8px 12px}
+.bs .col .fb2{font-size:13.5px;padding:7px 6px}
+.bs .col ul{font-size:12px;line-height:1.55}
+.bs .todo{font-size:12.5px;padding:7px 10px}
+.bs .gold{font-size:20px}
+.bs .gold small{font-size:13px}
+.bs .foot2{font-size:11px}
+.foot2{font-size:10.5px;color:#888;flex:none}
+
+.lay{display:inline-block;font-size:10.5px;font-weight:700;border-radius:2px;padding:0 6px;color:#fff}
+.lay.p{background:#E6A23C}.lay.h{background:#2F5BD0}.lay.m{background:#8c8c8c}
+.bs td.c,.bs th.c{text-align:center}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:none}
+.vs .hd2{font-size:13.5px;font-weight:700;padding:5px 10px;color:#fff;background:var(--accent);border-radius:2px 2px 0 0}
+.vs .hd2.g{background:#6b7280}
+.vs .bx2{border:1px solid var(--line);border-top:0;padding:8px 12px;font-size:12.5px;line-height:1.6;background:#fff}
+.pipe{display:flex;align-items:stretch;gap:0;flex:none}
+.pipe div{flex:1;border:1.2px solid #b9b9b9;background:#fff;border-radius:4px;padding:3px 4px;font-size:11px;text-align:center;font-weight:700;line-height:1.3}
+.pipe div small{display:block;font-weight:400;color:#666;font-size:9.8px}
+.pipe i{align-self:center;padding:0 3px;color:#888;font-style:normal;font-size:11px}
+
+.pl{display:grid;grid-template-columns:1fr 26px 1fr 26px 1fr;align-items:stretch;flex:none}
+.pl .ar2{display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:20px;font-weight:700}
+.stg{border:1.3px solid var(--accent);border-radius:4px;background:#fff;display:flex;flex-direction:column}
+.stg .sh{background:var(--accent);color:#fff;font-weight:700;font-size:14px;padding:5px 10px;display:flex;justify-content:space-between;align-items:center}
+.stg .sh small{font-weight:400;font-size:11px;opacity:.9}
+.stg .kv2{display:grid;grid-template-columns:34px 1fr;gap:4px 6px;padding:7px 10px;font-size:12px;line-height:1.5}
+.stg .kv2 i{font-style:normal;font-size:10.5px;font-weight:700;color:#888;border:1px solid #ccc;border-radius:2px;text-align:center;align-self:start;line-height:1.6}
+.stg .kv2 i.r{color:var(--accent);border-color:var(--accent)}
+.whole{border:1.3px dashed #6b7280;border-radius:4px;background:#f6f6f6;padding:6px 12px;font-size:12px;line-height:1.55;display:grid;grid-template-columns:150px 1fr 52px;gap:10px;align-items:center;flex:none}
+.whole b.t{color:#374151;font-size:13.5px}
+.hand{font-size:11.5px;color:var(--accent);font-weight:700}
+
+.lay.j{background:#7B3FA0}
+.inp{border:1px dashed #b9b9b9;background:#fafafa;border-radius:3px;padding:5px 10px;font-size:11.5px;line-height:1.5;color:#444;font-family:Menlo,Consolas,monospace}
+.inp b{font-family:inherit;color:#222}
+.gap td,.gap th{padding:4px 8px}
+.gap td:nth-child(1){font-weight:700;white-space:nowrap}
+.gap td:nth-child(4){white-space:nowrap}
+.st{display:inline-block;background:var(--accent);color:#fff;border-radius:2px;padding:0 5px;font-size:10.5px;font-weight:700;margin-right:3px}
+.dif td,.dif th{padding:3px 8px}
+.dif td:first-child{font-weight:700;white-space:nowrap}
+
+.pt{display:flex;flex-direction:column;gap:6px}
+.claim{border-left:3px solid var(--accent);background:#fff;border:1px solid var(--line);border-left:3px solid var(--accent);padding:6px 11px;border-radius:2px}
+.claim h3{margin:0 0 3px;font-size:14px}
+.claim p{margin:0;font-size:12.3px;line-height:1.55;color:#444}
+.yn{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);flex:none}
+.yn>div{padding:7px 11px;font-size:12.3px;line-height:1.6}
+.yn .y{background:var(--accent-soft)}
+.yn .n{background:#f6f6f6}
+.yn h4{margin:0 0 3px;font-size:13.5px}
+.yn .y h4{color:var(--accent)}
+.yn .n h4{color:#555}
+.yn ul{margin:0}
+.lay.p2{background:#E6A23C}
+
+.kp{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex:none}
+.kp div{border:1px solid var(--line);border-top:3px solid var(--accent);background:#fff;padding:5px 8px;border-radius:2px}
+.kp b{display:block;font-size:22px;color:var(--accent);line-height:1.2}
+.kp span{font-size:11px;color:#555}
+.c4{grid-template-columns:repeat(4,minmax(0,1fr))}
+
+.loop{border:1.3px dashed #3D9970;background:#F2FAF5;border-radius:4px;padding:6px 12px;font-size:12.5px;display:grid;grid-template-columns:170px 1fr 70px;gap:10px;align-items:center;flex:none}
+.loop b.t{color:#1d5c3e;font-size:13.5px}
+.nest{border:1.5px solid;border-radius:5px;padding:5px 10px 8px;display:flex;flex-direction:column;gap:5px}
+.nest .nh{display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.5}
+.nest .nh b{font-size:14px;white-space:nowrap}
+.nest .nh i{font-style:normal;font-size:10.5px;border:1px solid;border-radius:2px;padding:0 5px;white-space:nowrap}
+.nest.g1{border-color:var(--accent);background:#fff}.nest.g1>.nh b,.nest.g1>.nh i{color:var(--accent);border-color:var(--accent)}
+.nest.g2{border-color:#2F5BD0;background:#F5F7FD}.nest.g2>.nh b,.nest.g2>.nh i{color:#1D3FA8;border-color:#2F5BD0}
+.nest.g3{border-color:#3D9970;background:#F2FAF5}.nest.g3>.nh b,.nest.g3>.nh i{color:#14532D;border-color:#3D9970}
+.nest .nb{font-size:12px;color:#333;line-height:1.5}
+
+.role h3{display:flex;align-items:center;gap:6px}
+.role .who{display:inline-block;color:#fff;font-size:11px;font-weight:700;border-radius:2px;padding:0 6px}
+.mat td:first-child{white-space:nowrap}
+.mat td:first-child small{display:block;font-weight:400;color:#888;font-size:10.5px}
+
+.lane3{display:grid;grid-template-columns:1fr 30px 1fr 30px 1fr;align-items:stretch;flex:none}
+.lane3 .ar2{display:flex;align-items:center;justify-content:center;color:#888;font-size:22px;font-weight:700}
+.rb{border:1.4px solid;border-radius:5px;background:#fff;display:flex;flex-direction:column}
+.rb .rh{color:#fff;font-weight:700;font-size:15px;padding:6px 12px}
+.rb .rh small{display:block;font-weight:400;font-size:11.5px;opacity:.92}
+.rb ul{margin:8px 12px 10px;padding-left:1.1em;font-size:13px;line-height:1.7}
+.stack4{display:flex;flex-direction:column;gap:5px;flex:none}
+.stack4 .ly{display:grid;grid-template-columns:170px 1fr 150px;align-items:center;gap:12px;border:1px solid var(--line);border-left:6px solid;border-radius:3px;padding:7px 12px;background:#fff}
+.stack4 .ly b{font-size:14px}
+.stack4 .ly b small{display:block;font-weight:400;font-size:10.5px;color:#888}
+.stack4 .ly .q{font-size:13px;color:#333}
+.stack4 .ly .w{font-size:11.5px;color:#666;text-align:right}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:#888;padding:0 4px;flex:none}
+
+.tw td:nth-child(2){color:#999;text-decoration:line-through}
+.tw td:nth-child(3){color:#1d5c3e;font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}
+.tiles div{border:1.3px solid var(--accent);border-radius:4px;background:#fff;padding:8px 10px}
+.tiles b{display:block;font-size:14px;color:var(--accent);margin-bottom:3px}
+.tiles span{font-size:12px;color:#444;line-height:1.5}
+.bigflow{display:flex;align-items:stretch;flex:none}
+.bigflow div{flex:1;border:1.4px solid #b9b9b9;border-radius:5px;background:#fff;padding:8px 8px;text-align:center;font-size:14px;font-weight:700;line-height:1.35}
+.bigflow div small{display:block;font-weight:400;color:#666;font-size:11.5px;margin-top:3px}
+.bigflow div.hot{border-color:var(--accent);background:var(--accent-soft)}
+.bigflow i{align-self:center;padding:0 6px;color:#888;font-style:normal;font-size:16px}
+
+.fill table.grow thead th{height:34px}
+.fill table.grow tbody tr{height:auto}
+.fill.even{justify-content:space-evenly}
+.fill.even .bigflow div{font-size:17px;padding:16px 10px}
+.fill.even .bigflow div small{font-size:13px;margin-top:6px}
+.fill.even .tiles div{padding:18px 14px;min-height:150px;display:flex;flex-direction:column;justify-content:center}
+.fill.even .tiles b{font-size:17px;margin-bottom:8px}
+.fill.even .tiles span{font-size:14px;line-height:1.6}
+.fill.even .pipe div{font-size:17px;padding:22px 8px;min-height:170px;display:flex;flex-direction:column;justify-content:center}
+.fill.even .pipe div small{font-size:13.5px;margin-top:8px}
+.lane3.grow .rb ul{flex:1;display:flex;flex-direction:column;justify-content:center}
+.nest.grow .nest .nb{flex:1;display:flex;align-items:center}
+.body.fill{gap:12px !important}
+.fill .grow{flex:1 1 auto;min-height:0}
+.fill table.grow td{vertical-align:middle}
+.fill table{font-size:13.5px !important;line-height:1.55 !important}
+.fill th,.fill td{padding:6px 10px}
+.fill .claim{padding:9px 13px}
+.fill .claim h3{font-size:15.5px;margin-bottom:4px}
+.fill .claim p{font-size:13.5px;line-height:1.6}
+.fill .quote,.fill .cs .c,.fill .cs .s{font-size:13.5px;padding:9px 13px}
+.fill .subh{font-size:15px}
+.fill .foot2{font-size:11.5px}
+.fill .inp{font-size:12.5px;padding:7px 12px}
+.fill .gold{font-size:20px}
+/* stretchable pictures */
+.pl.grow{align-items:stretch}
+.pl.grow .stg .kv2{font-size:14px;padding:12px 14px;gap:8px 8px;align-content:center;flex:1}
+.pl.grow .stg .sh{font-size:16px;padding:8px 12px}
+.lane3.grow .rb .rh{font-size:17px;padding:10px 14px}
+.lane3.grow .rb ul{font-size:15.5px;line-height:2.1;margin:14px 16px}
+.stack4.grow{display:flex;flex-direction:column;gap:8px}
+.stack4.grow .ly{flex:1;padding:8px 16px}
+.stack4.grow .ly b{font-size:16px}
+.stack4.grow .ly .q{font-size:14.5px}
+.stack4.grow .ly .w{font-size:12.5px}
+.bigflow.grow div{display:flex;flex-direction:column;justify-content:center;font-size:17px;padding:12px}
+.bigflow.grow div small{font-size:13px;margin-top:6px}
+.tiles.grow div{padding:14px 14px;display:flex;flex-direction:column;justify-content:center}
+.tiles.grow b{font-size:17px;margin-bottom:8px}
+.tiles.grow span{font-size:14px;line-height:1.6}
+.nest.grow{justify-content:flex-start}
+.nest.grow .nest{flex:1}
+.nest.grow .nh b{font-size:17px}
+.nest.grow .nh i{font-size:12px}
+.nest.grow .nb{font-size:14px}
+.pipe.grow div{display:flex;flex-direction:column;justify-content:center;font-size:15px;padding:10px 6px}
+.pipe.grow div small{font-size:12.5px;margin-top:5px}
+.vs.grow .bx2{font-size:13.5px}
+.fill .kp b{font-size:26px}
+.fill .kp span{font-size:12.5px}
+
+.cap2{display:grid;grid-template-columns:.8fr 1.5fr;gap:12px;flex:1;min-height:0}
+.cap2 table{width:100%;border-collapse:collapse;font-size:11px;align-self:start}
+.cap2 th{background:var(--accent);color:#fff;text-align:left;padding:4px 8px;font-size:11.5px}
+.cap2 td{border-bottom:1px solid var(--line);padding:3.5px 8px;vertical-align:middle;line-height:1.35}
+.cap2 td.n{font-family:Consolas,Menlo,monospace;font-weight:700;white-space:nowrap;color:#1D3FA8;font-size:11px}
+.cap2 td.g{background:#FDF1EE;font-weight:700;color:#C93A1C;text-align:center;width:44px;font-size:10.5px;white-space:nowrap;padding:2px 4px}
+.cap2 .L td{padding-top:6px;padding-bottom:6px}
+.cap2 td.s{color:#555;font-size:10.5px}
+
+.reuse{display:flex;gap:10px;align-items:center;flex:none;background:#EEF2FB;border-left:4px solid #2F5BD0;border-radius:2px;padding:5px 10px;font-size:12px;line-height:1.45;color:#222}
+.reuse>b{flex:none;color:#fff;background:#2F5BD0;border-radius:2px;padding:1px 8px;font-size:12px}
+.reuse .do{flex:1.5}
+.reuse .pre{flex:1;color:#555;font-size:11.5px;border-left:1px solid #b8c6ee;padding-left:10px}
+.reuse .pre i{font-style:normal;font-weight:700;color:#8A5A00;margin-right:6px}
+.df{font-weight:700;white-space:nowrap}
+.df.l{color:#2E7D32}.df.m{color:#B26A00}.df.h{color:#C62828}
+.ov td.pgn,.pgn{white-space:nowrap;color:#666;text-align:center}
+.ov{font-size:12px}.ov th,.ov td{padding:4px 8px!important;line-height:1.4}
+.gl{font-size:12px}.gl th,.gl td{padding:3px 9px!important;line-height:1.35}
+.pipe.big>div{font-size:13px;padding:5px 6px}.pipe.big small{font-size:11px}
+
+.ov9 th:first-child{width:170px}
+.whole .small.muted{white-space:nowrap}
+.ov tr.grp td{background:#FFF4F1;color:#C93A1C;font-weight:700;font-size:11.5px;padding:2px 8px!important}
+.ov9{font-size:12px}.ov9 th,.ov9 td{padding:3px 8px!important;line-height:1.35}
+.pipe.m>div{font-size:12.5px;padding:7px 5px}.pipe.m small{font-size:10.8px;margin-top:2px}
+.pipe.m>i.back{color:#C93A1C;font-weight:700}
+.kp.m b{font-size:22px}.kp.m span{font-size:11.5px}
+.kp.m small{display:block;color:#888;font-size:10.5px;margin-top:1px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;min-height:0}
+.two .col2{border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:3px;padding:8px 14px;display:flex;flex-direction:column;gap:5px;background:#fff}
+.two .col2.b{border-top-color:#2F5BD0}
+.two .col2 h3{font-size:15.5px;margin:0}
+.two .col2 h3 em{font-style:normal;font-size:12.5px;color:#fff;background:var(--accent);border-radius:2px;padding:1px 7px;margin-left:8px}
+.two .col2.b h3 em{background:#2F5BD0}
+.two .col2 .why{font-size:12px;color:#555;margin:0}
+.two .col2 ul{margin:2px 0 0;padding-left:1.1em;font-size:14px;line-height:1.9}
+.eq{flex:none;text-align:center;font-size:17px;font-weight:700;color:#222;padding:2px 0}
+.eq span{color:var(--accent)}.eq span.b{color:#2F5BD0}
+
+.ov16{font-size:12.5px}.ov16 th,.ov16 td{padding:4px 9px!important;line-height:1.4}
+.ov16 td.pr{color:#1D3FA8;font-weight:700}
+.metric{border:1px dashed #b8c6ee;background:#F5F7FD;border-radius:3px;padding:4px 9px;font-size:12px;line-height:1.5}
+.col2:not(.b) .metric{border-color:#F3B3A3;background:#FFF6F3}
+.metric b{color:#1D3FA8}.col2:not(.b) .metric b{color:#C93A1C}
+.nowst{font-size:11.5px;color:#555;border-top:1px solid var(--line);padding-top:4px;margin-top:auto}
+.nowst i{font-style:normal;font-weight:700;color:#8A5A00;margin-right:4px}
+.two16 .col2 ul{font-size:13.5px;line-height:1.9}
+.tree{width:100%;flex:1;min-height:118px;max-height:170px}
+.tree rect{fill:#fff;stroke:#2F5BD0;stroke-width:1.2}
+.tree rect.root{fill:#2F5BD0}
+.tree text{font-size:10.5px;fill:#222;text-anchor:middle;dominant-baseline:middle}
+.tree text.w{fill:#fff;font-weight:700}
+.tree text.ax{fill:#C93A1C;font-weight:700;font-size:10.5px}
+.tree line{stroke:#9aa9d6;stroke-width:1.1}
+.tree line.ax{stroke:#C93A1C;stroke-dasharray:3 2}
+.mat tr.grp td{background:#FFF4F1;color:#C93A1C;font-weight:700;font-size:12px;padding:3px 9px!important}
+.mat{font-size:12.5px}.mat th,.mat td{padding:4px 9px!important;line-height:1.4}
+
+.two,.cap2,.pl.grow{min-height:auto!important}
+.ov16 th,.ov16 td{padding:3px 9px!important}
+.mat th,.mat td{padding:3px 9px!important}
+.fit .body{gap:6px!important}
+.fit table th,.fit table td{padding-top:3px!important;padding-bottom:3px!important;line-height:1.38!important}
+.fit .claim{padding:6px 11px!important}
+.fit .claim p{font-size:12px!important;line-height:1.5!important}
+.fit .claim h3{font-size:13.5px!important;margin-bottom:2px!important}
+.fit .quote{padding:4px 10px!important;font-size:12px!important}
+.cap2 td{padding:2px 7px!important;line-height:1.3!important}
+.cap2 table{font-size:10.5px!important}
+.cap2 td.s{font-size:10px!important}
+.two11 .col2{padding:7px 13px;gap:3px}
+.two11 .col2 ul{font-size:12.8px;line-height:1.6}
+.two16 .col2 ul{font-size:12.6px!important;line-height:1.5!important}.two16 .tree{flex:none!important;height:100px!important;min-height:0!important}.two16 .col2{gap:3px!important;padding:6px 12px!important}.two16 .metric{font-size:11.5px!important;line-height:1.4!important}.two16 .nowst{font-size:11px!important}.eq{font-size:15px!important}.two16 .col2 ul{font-size:12.2px!important;line-height:1.45!important}.two16 .col2 li{margin-bottom:1px}
+.mat th,.mat td{padding:2px 9px!important;line-height:1.36!important}.mat tr.grp td{padding:2px 9px!important}
+.see{font-size:12.4px}.see th,.see td{padding:5px 9px!important;line-height:1.42}
+.see td.ch{white-space:nowrap;text-align:center;font-size:12px}
+.see .y{color:#2E7D32;font-weight:700}.see .n{color:#C62828;font-weight:700}
+.see td small{display:block;color:#777;font-size:11px;margin-top:1px}
+
+.see{font-size:11.8px!important}.see td small{font-size:10.5px!important}
+.see th,.see td{padding:3px 9px!important;line-height:1.38!important}
+.src th,.src td{padding:3px 8px!important;line-height:1.4!important}
+.see th small{display:block;font-weight:400;font-size:10px;opacity:.9}
+.ex{font-size:12.2px;line-height:1.55;margin:0;padding-left:1.1em}
+.ex li b{color:#1D3FA8}
+.src{font-size:11.8px}.src th,.src td{padding:5px 8px!important;line-height:1.45}
+.src td.k{white-space:nowrap}
+.src td.k small{display:block;font-weight:400;color:#888;font-size:10.5px}
+
+.sp th,.sp td{padding:2px 8px!important;line-height:1.36!important}.sp{font-size:11.4px!important}.sp td small{display:inline!important;margin-left:6px}
+.spp .pipe div{padding:4px 6px!important;min-height:0!important;font-size:12.5px!important}.spp .pipe div small{font-size:10.5px!important}
+.spc .claim{padding:5px 11px!important}.spc .claim p{font-size:11.8px!important;line-height:1.45!important}.spc .claim h3{font-size:13px!important;margin-bottom:1px!important}
+.sp{font-size:11.8px}.sp th,.sp td{padding:4px 8px!important;line-height:1.42}
+.sp td.k{white-space:nowrap;font-weight:700}
+.sp td small{display:block;color:#888;font-size:10.5px;margin-top:1px}
+
+.chain{display:flex;align-items:stretch;gap:0;flex:1;min-height:0;margin-top:2px}
+.chain>i{align-self:center;padding:0 3px;color:#888;font-style:normal;font-size:16px}
+.cc{flex:1;border:1.3px solid;border-radius:5px;background:#fff;display:flex;flex-direction:column;min-width:0}
+.cc .ch{color:#fff;padding:6px 9px;font-weight:700;font-size:14.5px;line-height:1.25}
+.cc .ch small{display:block;font-weight:400;font-size:11px;opacity:.92;margin-top:1px}
+.cc .repo{font-size:10.5px;font-weight:700;padding:3px 9px;background:#F1F3F9;color:#444;border-bottom:1px solid #e3e6ef}
+.cc .repo.none{color:#aaa;font-weight:400}
+.cc ul{margin:0;padding:7px 9px 7px 22px;font-size:12px;line-height:1.55;flex:1}
+.cc li{margin-bottom:3px}
+.back{flex:none;display:flex;gap:8px;align-items:center;border:1px dashed #9aa9d6;background:#F5F7FD;border-radius:3px;padding:5px 10px;font-size:12px;line-height:1.5}
+.back b{color:#1D3FA8;white-space:nowrap}
+
+.whole,.loop{display:grid!important;grid-template-columns:176px 1fr 84px!important;gap:10px!important;align-items:center}
+.whole .small.muted,.loop .small.muted{text-align:right;white-space:nowrap}
+.from{color:#8a8f9c;font-weight:400;margin-right:8px;font-size:12.5px}
+
+.arch4{flex:1;min-height:0;display:flex}
+.arch4 svg{width:100%;height:100%}
+.wsg{display:grid;grid-template-columns:1.08fr 1fr;gap:12px;flex:1;min-height:0}
+.wtree{border:1px solid var(--line);border-radius:4px;background:#fff;padding:6px 10px;font-size:11.5px;line-height:1.38;display:flex;flex-direction:column;gap:4px}
+.wg{border-left:4px solid;border-radius:2px;padding:3px 0 3px 8px;display:flex;flex-direction:column;gap:1px}
+.wg.g1{border-color:#26357F;background:#F7F8FC}.wg.g2{border-color:#8E5BD0;background:#FAF7FD}.wg.g3{border-color:#3D9970;background:#F4FBF7}
+.wh{display:flex;gap:8px;align-items:baseline;margin-bottom:1px}
+.wh b{font-size:12.5px}.wh i{font-style:normal;font-size:11px;color:#fff;border-radius:2px;padding:0 6px}
+.g1>.wh i{background:#26357F}.g2>.wh i{background:#8E5BD0}.g3>.wh i{background:#3D9970}
+.wl{display:flex;gap:8px;align-items:baseline}
+.wl code{font-family:Menlo,Consolas,monospace;font-weight:700;font-size:11px;color:#1D3FA8;min-width:104px}
+.wl span{color:#444;font-size:11.2px}
+.wl em{font-style:normal;font-size:10px;color:#777;border:1px solid #ccc;border-radius:2px;padding:0 4px;margin-left:auto}
+.wn{font-size:10.5px;color:#888;margin:1px 0 0 0}
+.life{display:flex;flex-direction:column;gap:7px;min-height:0}
+.lf{flex:1;display:flex;gap:10px;border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:3px;background:#fff;padding:5px 10px;align-items:center}
+.lf .lk{flex:none;width:58px;text-align:center}
+.lf .lk b{display:block;font-size:17px;color:var(--accent);line-height:1.1}
+.lf .lk span{font-size:12px;font-weight:700;color:#222}
+.lf h4{margin:0 0 2px;font-size:12.5px}
+.lf p{margin:0;font-size:11.8px;line-height:1.45;color:#333}
+
+.fun{font-size:11.8px}.fun th,.fun td{padding:3px 8px!important;line-height:1.4;vertical-align:middle}
+.fun td.fst{white-space:nowrap}
+.fun td.fst b{font-size:13px;display:block}
+.fun td.fst small{color:#888;font-size:10.5px}
+.fun td.fsc .fbl{display:block;font-size:11.5px;font-weight:700;color:#222;margin-bottom:2px}
+.fun td.fsc .fbar{height:9px;border-radius:2px}
+.fun td.fex{color:#14532D}
+.fun td.fex code{font-family:Menlo,Consolas,monospace;font-size:10.8px;color:#14532D}
+.fun td.fex small{display:block;color:#888;font-size:10.5px}
+.fun td.fky{color:#222}
+.fun tr.last td{background:#FDF1EE}
+.fx{font-size:11.8px!important;line-height:1.45!important}
+.fx p{font-size:11.8px!important;line-height:1.45!important}
+.fx .claim{padding:5px 11px!important}.fx .claim h3{font-size:13px!important;margin-bottom:1px!important}
+.fun td{padding:2px 8px!important;line-height:1.32!important}.fun thead th{padding:4px 8px!important}.fx .claim{padding:4px 11px!important}.fun td.fsc .fsrc{display:block;margin-top:2px;font-size:10px;color:#666;white-space:nowrap}.fun td.fsc .fsrc code{font-family:Menlo,Consolas,monospace;font-size:8.8px;color:#26357F;padding:0 2px;letter-spacing:-.2px}
+.b17 div{font-size:12.5px!important;padding:6px 6px!important}.b17 div small{font-size:10.6px!important;line-height:1.35!important;margin-top:3px}
+.b17g{display:grid;grid-template-columns:2.1fr 1fr;gap:12px;flex:1;min-height:0}
+.b17l{display:flex;flex-direction:column;gap:4px;min-height:0}.b17l .b17t{flex:1}
+.b17t{font-size:11.6px}.b17t th,.b17t td{padding:2px 7px!important;line-height:1.3}.b17t td.c,.b17t th.c{text-align:center}
+.b17t tr.win td{background:#FDF1EE}
+.apa td,.apa th{padding-top:2px!important;padding-bottom:2px!important;line-height:1.35!important}
+.b17s{font-size:11.6px;color:#333;background:#F5F6FA;border-left:3px solid #26357F;padding:5px 9px;line-height:1.45}
+.b17s b{color:#26357F}
+.b17r{display:flex;flex-direction:column;gap:8px}.b17r .claim{flex:1;padding:7px 11px}.b17r .claim h3{font-size:13px;margin-bottom:3px}.b17r .claim p{font-size:11.8px;line-height:1.5}
+.gl td,.gl th{padding-top:3px!important;padding-bottom:3px!important;line-height:1.35!important}
+.apk{font-size:11.6px}.apk td,.apk th{padding:5px 8px!important;line-height:1.4}
+.fun td{padding-top:1px!important;padding-bottom:1px!important}.fun td.fst small{display:none}.fx .claim p{line-height:1.4!important}.fun{font-size:13px!important}.fun td{padding-top:6px!important;padding-bottom:6px!important;line-height:1.45!important}.fun td.fst small{display:block!important}.fun td.fst b{font-size:14px}.fun td.fex code{font-size:11.6px}.fun td.fsc .fbl{font-size:12.5px}.fun td.fsc .fbar{height:11px}.t9{font-size:12.4px}.t9 th,.t9 td{padding:2px 8px!important;line-height:1.35;vertical-align:middle}.t9 td.hb b{font-size:13.4px}.t9 td.hb small{color:#888;font-size:10px;font-family:Menlo,Consolas,monospace;display:block}.t9 code{font-family:Menlo,Consolas,monospace;font-size:11.2px;color:#26357F}.k9 b{font-size:21px!important}.k9 span{font-size:11.5px!important}.exl{flex:none;font-size:11.8px;background:#FFF7E6;border-left:3px solid #E8A33D;padding:3px 10px;color:#444;line-height:1.4}.exl b{color:#B26B00;margin-right:9px}.g10{display:grid;grid-template-columns:1fr 1.12fr;gap:12px;flex:1;min-height:0}.mb{border:1.4px solid #26357F;border-radius:4px;background:#fff;padding:7px 11px;font-size:11.8px;line-height:1.5;display:flex;flex-direction:column}.mb p{margin:0 0 2px}.mbh{font-weight:700;color:#26357F;margin-bottom:4px;font-size:12.4px}.mbl{align-self:flex-start;background:#26357F;color:#fff;font-weight:700;padding:1px 8px;border-radius:2px;margin-bottom:5px}.mb ul{margin:0 0 0 17px;padding:0}.mb li{margin-bottom:1px}.mbn{font-size:10.6px;color:#777;margin-top:auto;border-top:1px dashed #ccc;padding-top:4px;line-height:1.4}.rt10{display:flex;flex-direction:column;gap:5px;min-height:0}.t10,.t11,.t12{font-size:11.8px}.t10 th,.t10 td,.t11 th,.t11 td,.t12 th,.t12 td{padding:2px 8px!important;line-height:1.4;vertical-align:middle}.t10 td.no{color:#B3261E}.t10 td.ok{color:#14532D;font-weight:700}.t11 td.c,.t11 th.c{text-align:center}.t12 td.gap{color:#8A4B00}.zp10 .claim,.zp11 .claim,.zp12 .claim{padding:4px 12px!important}.zp11 .claim h3,.zp12 .claim h3{margin-bottom:2px!important}.f11 div,.f13 div{font-size:12.4px!important;padding:6px 6px!important}.f11 div small,.f13 div small{font-size:10.6px!important;line-height:1.35!important;margin-top:3px}.vs14{display:grid;grid-template-columns:1fr 70px 1fr;align-items:center;flex:none}.vsc{border:1.6px solid;border-radius:4px;padding:10px 14px;text-align:center;background:#fff}.vsc.a{border-color:#EE4D2D}.vsc.b{border-color:#26357F}.vsc h4{margin:0 0 3px;font-size:17px}.vsc.a h4{color:#EE4D2D}.vsc.b h4{color:#26357F}.vsc p{margin:0;font-size:12.5px;color:#444;line-height:1.4}.vsb{display:flex;justify-content:center}.vsb span{width:50px;height:50px;border-radius:50%;background:#222;color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px #fff,0 0 0 5px #222}.jd14{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:8px;flex:none}.jd14 div{background:#F5F6FA;border-left:3px solid #26357F;padding:5px 10px;font-size:12px;line-height:1.45;color:#333}.jd14 b{display:block;color:#26357F;font-size:12.5px}.itag{flex:none;display:flex;align-items:baseline;gap:10px;padding:3px 11px;border-radius:3px;color:#fff;font-size:12px}.itag b{font-size:15px}.itag span{opacity:.92}.itag.t{background:#EE4D2D}.itag.o{background:#26357F}.it4{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex:none}.it4>div{background:#fff;border:1.3px solid;border-radius:4px;padding:6px 10px}.it4.t>div{border-color:#EE4D2D}.it4.o>div{border-color:#26357F}.it4 h4{margin:0 0 3px;font-size:14px;display:flex;align-items:center;gap:6px}.it4 h4 span{display:inline-flex;width:20px;height:20px;border-radius:50%;color:#fff;font-size:12px;align-items:center;justify-content:center}.it4.t h4 span{background:#EE4D2D}.it4.o h4 span{background:#26357F}.it4 p{margin:0 0 2px;font-size:11.4px;line-height:1.42;color:#333}.lg9{flex:none;display:flex;gap:8px;font-size:11.4px}.lg9 span{padding:2px 9px;border-radius:3px;color:#fff;font-weight:700}.lg9 .phA{background:#2F5BD0}.lg9 .phB{background:#26357F}.lg9 .phC{background:#EE4D2D}.lg9 .phD{background:#6b7280}.g9i{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1;min-height:0}.ct{font-size:11px}.ct th,.ct td{padding:0 7px!important;line-height:1.25}.g9i{gap:8px}.ct td.c,.ct th.c{text-align:center}.ct td.n{color:#888;text-align:center}.ct code{font-family:Menlo,Consolas,monospace;font-size:10.4px;color:#222}.ct tr.phA td:first-child{border-left:4px solid #2F5BD0}.ct tr.phB td:first-child{border-left:4px solid #26357F}.ct tr.phC td:first-child{border-left:4px solid #EE4D2D}.ct tr.phD td:first-child{border-left:4px solid #6b7280}.ct td.st-partial{color:#B26B00;font-weight:700}.ct td.st-failed{color:#B3261E;font-weight:700}.ct td.st-success{color:#14532D}.c3x{grid-template-columns:repeat(3,1fr)!important}.c3x .claim{padding:5px 10px!important}.c3x .claim h3{font-size:12.6px!important;margin-bottom:2px!important}.c3x .claim p{font-size:11.2px!important;line-height:1.4!important}.en4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}.en{background:#fff;border:1.4px solid;border-radius:4px;padding:3px 9px}.en.a{border-color:#26357F}.en.b{border-color:#2F5BD0}.en.c{border-color:#B26B00}.en.d{border-color:#EE4D2D}.en .et{display:inline-block;color:#fff;font-size:11px;font-weight:700;padding:0 7px;border-radius:2px}.en.a .et{background:#26357F}.en.b .et{background:#2F5BD0}.en.c .et{background:#B26B00}.en.d .et{background:#EE4D2D}.en h4{margin:1px 0 1px;font-size:11.8px;line-height:1.3}.en p{margin:0;font-size:11px;line-height:1.38;color:#333}.en p.eh{color:#777;font-size:10.8px}.en code{font-family:Menlo,Consolas,monospace;font-size:10.6px;color:#26357F}.zp8 .fun{font-size:11.6px!important}.zp8 .fun td{padding-top:2px!important;padding-bottom:2px!important;line-height:1.35!important}.zp8 .fun td.fst small{display:none!important}.zp8 .fun td.fst b{font-size:12.6px}.zp8 .fun td.fex code{font-size:10.6px}.zp8 .fun td.fsc .fbar{height:8px}.zp8 .fun td.fsc .fbl{font-size:11.2px}.zp4 .body{zoom:1.236}.zp5 .body{zoom:1.084}.zp6 .body{zoom:1.205}.zp8 .body{zoom:1.006}.zp11 .body{zoom:1.006}.zp12 .body{zoom:1.041}.zp13 .body{zoom:1.236}.zp14 .body{zoom:1.154}.zp16 .body{zoom:1.099}.zp17 .body{zoom:1.052}.zp24 .body{zoom:1.072}</style>
+<style>
+/* ===== 工作区页改版：第 5 页 + 附录 M ===== */
+#s5 .body,#sM .body{zoom:1;padding-top:0;gap:8px}
+#s5 .wsg{grid-template-columns:1.02fr 1fr;gap:10px}
+#s5 .wtree{font-size:10.5px;line-height:1.3;padding:5px 9px;gap:2px}
+#s5 .wl code{font-size:10.1px;min-width:92px}
+#s5 .wl span{font-size:10.2px}
+#s5 .wl em{font-size:9px;padding:0 3px}
+#s5 .wl em.rw{color:#C93A1C;border-color:#E9A08D;background:#FFF4F1}
+#s5 .wh b{font-size:11.4px}
+#s5 .wh i{font-size:9.6px;padding:0 5px}
+#s5 .wg{padding:2px 0 2px 7px;gap:0}
+#s5 .wn{font-size:9.4px}
+#s5 .s5why{display:flex;flex-direction:column;gap:6px;min-height:0}
+#s5 .pw{flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:2px;border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:3px;background:#fff;padding:5px 10px}
+#s5 .pw h4{margin:0;font-size:12.4px;color:#222}
+#s5 .pw h4 b{color:var(--accent);font-size:13px;margin-right:5px}
+#s5 .pw p{margin:0;font-size:10.4px;line-height:1.38;color:#333}
+#s5 .pw code{display:block;margin-top:1px;font-size:9.2px;line-height:1.3;color:#7a7a7a;font-family:Menlo,Consolas,monospace}
+#s5 .wlg{margin-top:auto;border-top:1px dashed #d8d8d8;padding-top:3px;display:flex;flex-direction:column}
+#s5 .wlgt{display:flex;align-items:baseline;gap:8px;font-size:9.4px;font-weight:700;color:#444;margin-bottom:1px}
+#s5 .wlgt i{font-style:normal;font-weight:400;font-size:8.9px;color:#9a9a9a;margin-left:auto}
+#s5 .wlgr{display:flex;align-items:baseline;gap:6px;border-left:3px solid var(--c);padding-left:6px;line-height:1.28}
+#s5 .wlgr b{font-size:9.5px;color:var(--c);min-width:20px}
+#s5 .wlgr span{font-size:9.3px;color:#444}
+#s5 .s5steps{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;flex:none}
+#s5 .s5st{display:block;border:1px solid var(--line);border-top:3px solid #c9c9c9;border-radius:3px;padding:4px 8px;background:#fbfbfb}
+#s5 .s5st h4{margin:0;font-size:10.4px;line-height:1.3;color:#222}
+#s5 .s5st p{margin:1px 0 0;font-size:9.5px;line-height:1.35;color:#444}
+
+#sM .body{gap:9px}
+#sM table.ck{font-size:12.2px;line-height:1.45}
+#sM table.ck th{font-size:12px;padding:7px 9px}
+#sM table.ck td{padding:7px 9px;vertical-align:top}
+#sM table.ck tr.me td{background:#FFF7F4}
+#sM .two{grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+#sM .blk{border:1px solid var(--line);border-radius:3px;padding:8px 12px;background:#fff}
+#sM .bh{font-size:12.2px;font-weight:700;color:var(--accent);margin-bottom:2px}
+#sM ul{margin:0;padding-left:14px}
+#sM li{font-size:11.4px;line-height:1.6;margin:2px 0}
+
+/* 第 12 页：兜底加“不外泄”一行 */
+#s12 .body{zoom:1}
+#s12.slide .fill table.t12{font-size:12.5px!important;line-height:1.46!important}
+#s12 .t12 th{padding:5px 10px!important;height:auto!important}
+#s12 .t12 td{padding:5px 10px!important}
+#s12 .body.fill{gap:8px!important}
+#s12 .t12 td code{font-family:Menlo,Consolas,monospace;font-size:10.4px;background:#f3f3f3;padding:0 3px;border-radius:2px}
+#s12 .t12 tr.nw td{background:#FFF9F7}
+
+/* 第 2 页：一条真实 P0 告警，十个问题（只讲问题，不讲解法） */
+#s2 .body.fill{gap:8px!important;padding-top:0}
+#s2 .pq{display:grid;grid-template-columns:1.62fr 1fr;gap:12px;flex:1 1 auto;min-height:0}
+#s2 .pn{min-width:0;display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-top:4px solid var(--c);border-radius:3px;background:#fff}
+#s2 .pnh{display:flex;align-items:baseline;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line);background:#fafafa;flex:none}
+#s2 .pnh b{font-size:16px;color:var(--c);flex:none}
+#s2 .pnh em{font-style:normal;font-size:10.8px;color:#8a8a8a}
+#s2 .pl{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+#s2 .q{flex:1 1 0;min-height:0;display:grid;grid-template-columns:22px 150px 1fr;align-items:center;column-gap:8px;padding:0 12px;border-bottom:1px dashed #e4e4e4}
+#s2 .q:last-child{border-bottom:0}
+#s2 .q i{font-style:normal;width:20px;height:20px;border-radius:50%;background:var(--c);color:#fff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
+#s2 .q h4{margin:0;font-size:13.6px;line-height:1.3;color:#1c1c1c}
+#s2 .q p{margin:0;font-size:11.6px;line-height:1.4;color:#4d4d4d}
+#s2 .pn:last-child .q{grid-template-columns:22px 1fr;grid-template-rows:auto auto;row-gap:3px;align-content:center}
+#s2 .pn:last-child .q i{grid-row:1/3;align-self:start;margin-top:3px}
+#s2 .pn:last-child .q h4{font-size:15px}
+#s2 .pn:last-child .q p{font-size:12.6px;line-height:1.45;grid-column:2}
+
+/* 第 13 页：三种积累机制 */
+#s13 .mc{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:2px;background:#fff;padding:5px 10px;display:flex;flex-direction:column}
+#s13 .mc h3{margin:0 0 1px;font-size:13px;color:#222}
+#s13 .mc h3 code{font-family:Menlo,Consolas,monospace;font-size:10.6px;color:#777;font-weight:400;margin-left:5px}
+#s13 .mc em{font-style:normal;font-size:11.2px;font-weight:700;color:var(--c);margin-bottom:1px}
+#s13 .mc p{margin:0;font-size:11.1px;line-height:1.4;color:#444}
+#s13 .mc i{margin-top:auto;padding-top:2px;border-top:1px dashed #e4e4e4;font-style:normal;font-size:9.8px;color:#888}
+
+/* 问题编号：第 3 页表格、第 18 页表格、第 4–17 页引子前的标签 */
+.qnum{display:inline-flex;width:17px;height:17px;border-radius:50%;background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;align-items:center;justify-content:center;margin-right:6px;vertical-align:1px;line-height:1}
+.qnum.r{background:#26357F}
+.qchip{flex:none;display:inline-flex;align-items:center;padding-right:10px;font-size:12px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:11px;margin-right:8px;vertical-align:1px;line-height:20px;background:#fff;white-space:nowrap}
+.qchip i{font-style:normal;background:var(--accent);color:#fff;border-radius:10px;padding:0 8px;margin:-1px 7px -1px -1px;line-height:20px}
+.qchip.r{color:#26357F;border-color:#26357F}
+.qchip.r i{background:#26357F}
+/* 第 9 页：工具先把“没查到什么”标清楚 */
+.zp9 .qrs{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:3px;background:#fff;padding:3px 12px;flex:none}
+.zp9 .qrs b{font-size:13px;color:#222;flex:none}
+.zp9 .qrs span.qk{font-size:12px;color:#333;border:1px solid #d9d9d9;border-radius:3px;background:#fafafa;padding:1px 9px;flex:none}
+.zp9 .qrs em{font-style:normal;font-size:11.5px;color:#777;margin-left:auto;flex:none}
+
+.zp9 .qrs{padding:2px 12px}
+.zp9 .body{gap:5px!important}
+.zp9 table.t9 td,.zp9 table.t9 th{padding-top:3px!important;padding-bottom:3px!important}
+.zp9 table.t9{font-size:11.8px!important}
+.zp9 .foot2{margin-top:0!important;line-height:1.25}
+
+/* 第 3 页：十个问题的答案（总论 + 四条原则） */
+#s3 .body.fill{gap:10px!important;padding-top:0}
+#s3 .ax{display:flex;align-items:stretch;gap:10px;flex:none}
+#s3 .ax i{font-style:normal;align-self:center;font-size:20px;font-weight:700;color:#9a9a9a}
+#s3 .axb{flex:1 1 0;min-width:0;border:1px solid var(--line);border-radius:3px;background:#fafafa;padding:7px 12px;display:flex;flex-direction:column;gap:1px}
+#s3 .axb b{font-size:15px;color:#1c1c1c}
+#s3 .axb span{font-size:11.5px;color:#777}
+#s3 .axb.hi{flex:1.5 1 0;background:#FFF4F1;border-color:var(--accent)}
+#s3 .axb.hi b{color:var(--accent)}
+#s3 .ac4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1 1 auto;min-height:0}
+#s3 .ap{min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);border-top:4px solid var(--c);border-radius:3px;background:#fff}
+#s3 .aph{padding:8px 12px 7px;border-bottom:1px solid var(--line);background:#fafafa;display:flex;flex-direction:column;gap:3px;flex:none}
+#s3 .aph em{font-style:normal;font-size:10.5px;font-weight:700;color:#fff;background:var(--c);border-radius:2px;padding:0 6px;align-self:flex-start;line-height:1.5}
+#s3 .aph h4{margin:0;font-size:15.2px;line-height:1.3;color:#1c1c1c}
+#s3 .apc{font-size:11px;color:#777;display:flex;align-items:center}
+#s3 .ap ul{list-style:none;margin:0;padding:4px 12px;flex:1 1 auto;display:flex;flex-direction:column;justify-content:space-around;min-height:0}
+#s3 .ap li{display:grid;grid-template-columns:23px 1fr;align-items:start}
+#s3 .ap li .qnum{margin:2px 0 0}
+#s3 .ap li p{margin:0;font-size:12.4px;line-height:1.45;color:#2b2b2b}
+#s3 .ap li small{display:block;font-size:10.5px;color:var(--c);margin-top:1px}
+#s3 .apn{flex:none;border-top:1px dashed #d8d8d8;padding:6px 12px;font-size:11.6px;line-height:1.4;color:#555;background:#fcfcfc}
+#s3 .aph h4{min-height:40px}
+#s3 .apc .qnum{margin-left:5px}
+#s3 .apc .qnum:first-of-type{margin-left:6px}
+
+/* 第 19 页：后续研发的两个方向 */
+#s19 .body.fill{gap:8px!important;padding-top:0}
+#s19 .nx{display:grid;grid-template-columns:.78fr 1.22fr;gap:12px;flex:1 1 auto;min-height:0}
+#s19 .nxl,#s19 .nxr{min-width:0;display:flex;flex-direction:column;gap:7px;min-height:0}
+#s19 .nxh{display:flex;align-items:baseline;gap:8px;border-bottom:2px solid var(--accent);padding-bottom:3px;flex:none}
+#s19 .nxr .nxh{border-bottom-color:#26357F}
+#s19 .nxh b{font-size:15.5px;color:var(--accent)}
+#s19 .nxr .nxh b{color:#26357F}
+#s19 .nxh em{font-style:normal;font-size:11.2px;color:#8a8a8a}
+#s19 .nxt{display:flex;flex-wrap:wrap;align-items:center;gap:4px 5px;flex:none;font-size:11.2px;color:#666}
+#s19 .nxt b{font-size:11.4px;color:var(--accent);border:1px solid var(--accent);border-radius:10px;padding:0 7px;background:#fff6f3;line-height:1.55}
+#s19 .nxa{flex:1 1 0;min-height:0;display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:3px;background:#fff;padding:0 12px}
+#s19 .nxa i{font-style:normal;flex:none;width:62px;font-size:12px;font-weight:700;color:var(--accent)}
+#s19 .nxa p{margin:0;font-size:12.8px;line-height:1.5;color:#2b2b2b}
+#s19 .nxa p b{color:#1c1c1c}
+#s19 .nxs{flex:none;border:1px dashed #b9b9b9;border-radius:3px;background:#fafafa;padding:6px 10px;font-size:11.2px;line-height:1.45;color:#555}
+#s19 .nxs b{color:#333}
+#s19 .nxc{flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:2px;border:1px solid var(--line);border-left:5px solid #26357F;border-radius:3px;background:#fff;padding:3px 12px}
+#s19 .nxn{display:flex;align-items:center;gap:8px}
+#s19 .nxn h4{margin:0;font-size:13.6px;color:#1c1c1c}
+#s19 .st2{font-size:10.4px;font-weight:700;border-radius:2px;padding:0 6px;line-height:1.6;color:#fff}
+#s19 .st2.p{background:#E39A1F}
+#s19 .st2.n{background:#C93A1C}
+#s19 .nxc p{margin:0;font-size:11.6px;line-height:1.42;color:#3d3d3d}
+#s19 .nxc u{text-decoration:none;font-size:10.2px;font-weight:700;color:#2E7D5B;background:#F0F7F3;border-radius:2px;padding:0 5px;margin-right:6px}
+#s19 .nxc u.g{color:#C93A1C;background:#FFF4F1}
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div class="stage" id="stage"><div class="deck" id="deck">
+<section class="slide cover" data-notes="开场：这份分享从一次值班调查出发，讲 DoD 值班机器人是怎么搭起来的。第 2 页拿一条真实的 P0 告警，只把问题讲清楚：搭起来七个、跑起来三个。第 3 页是答案：一个会出错的模型加外面一圈程序，十个问题归成四条原则；第 4 到 13 页按开工、查、判、说、兜底、积累逐个讲，其中第 7 页讲一个问题进来怎么被看清楚它想干什么；第 14 到 17 页是度量：跑起来之后看什么，改完之后怎么验证；第 18 页总结十个设计点各自走到了哪一步；第 19 页是后续研发的两个方向。细节在附录。">
+  <h1 style="margin-top:150px">DoD 值班机器人的架构</h1>
+  <div class="cv-sub">从一次值班调查，看一个 agent 是怎么搭起来的</div>
+  <div class="cv-date">2026 年 11 月 · wei.zhong</div>
+  <div class="cv-bar"><i></i></div>
+</section>
+<section class="slide" id="s2" data-notes="这一页只讲问题，不讲解法。这是一个 DoD 的问题，拿一条 P0 告警当例子：TW 店配订单拿不到运单号。从这条告警发出，一直到 Agent 给出回答，再到回答之后怎么让效果做起来，一路上都有问题，分成两个系列。左边是搭起来（开发阶段）的七个问题：请求不能丢不能重，模型一次看不全，问题想干什么说不清，证据永远查不全，该不该开口拿不准，模型一定会出错，下次要更聪明。右边是跑起来（生产阶段）的三个问题：结论对不对没人知道，工具好不好用看不见，调查太慢。每一条都用这条 P0 告警里的样子说一遍，听的人先认下“这些问题我也会遇到”。下一页是这十个问题各自的解法总表，再往后逐章展开。">
+<header class="hd"><span class="sec">总览</span><span class="sep"></span><span class="ttl">一条真实 P0 告警，跑在 LLM 上会遇到的十个问题</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead">这是一个 DoD 问题，<span style="color:var(--accent)">拿一条 P0 告警当例子</span>：下面是它从发出到回答、再到回答之后，一路遇到的问题</p>
+<div class="body fill tight bs" style="padding-top:0">
+  <div class="inp">例子 · P0 告警：[TW] 店配订单拿不到运单号 · Incident SPISZ-20260522-04 · 市场 TW · 建单 05-22 16:50 · 工单 SPS-235014</div>
+  <div class="pq">
+    <div class="pn" style="--c:var(--accent)"><div class="pnh"><b>搭起来</b><em>开发阶段 · 从告警发出，到 Agent 回答 · 7 个问题</em></div><div class="pl">
+      <div class="q"><i>1</i><h4>请求不能丢、不能重</h4><p>告警要过好几个环节才到 Agent 手里，哪一环失败，这条 P0 就没人查；重复推送，又会查两遍、发两遍</p></div>
+      <div class="q"><i>2</i><h4>模型一次看不全</h4><p>手册、历史案例、工具清单、现场数据都要用，一次装不下，也不能全塞给它</p></div>
+      <div class="q"><i>3</i><h4>问题想干什么，说不清</h4><p>报警只写“拿不到运单号”：是查原因、查范围，还是查影响？问的是哪个服务、哪个对象？</p></div>
+      <div class="q"><i>4</i><h4>证据永远查不全</h4><p>监控、日志、变更散在各处，总有查不到的；模型容易把没查到当成没问题，或直接编</p></div>
+      <div class="q"><i>5</i><h4>该不该开口，拿不准</h4><p>业务群里说错一句会误导；有实锤不说会耽误；同一个进展反复说，又会刷屏</p></div>
+      <div class="q"><i>6</i><h4>模型一定会出错</h4><p>它会误用工具、被资料里的一句话带偏，还可能把凭据、手机号带进群里；不能指望它自觉守规矩</p></div>
+      <div class="q"><i>7</i><h4>下次要更聪明</h4><p>这条 P0 查完经验留不下来，下一条从头来；留错了更糟</p></div>
+    </div></div>
+    <div class="pn" style="--c:#26357F"><div class="pnh"><b>跑起来</b><em>生产阶段 · Agent 回答之后 · 3 个问题</em></div><div class="pl">
+      <div class="q"><i>8</i><h4>结论对不对，没人知道</h4><p>Agent 给了结论，但缺少对照；错了，也说不清错在证据，还是错在结论</p></div>
+      <div class="q"><i>9</i><h4>工具好不好用，看不见</h4><p>改了工具或提示词，是变好还是变差？线上没有数，改完无法验证</p></div>
+      <div class="q"><i>10</i><h4>调查太慢</h4><p>P0 等不起；慢在哪一步，是工具步数太多，还是探索得太宽，没拆开看过</p></div>
+    </div></div>
+  </div>
+</div>
+</section>
+
+<section class="slide" id="s3" data-notes="这一页是第 2 页那十个问题的答案，只讲一句话：Agent 是一个会出错的模型，加外面一圈程序；可靠靠这圈程序，变好靠度量。十个问题归成四条原则。前三条让它可靠：一是可靠的事交给程序，模型只做调查，对应问题 1、5、6；二是先备好材料、看清问题再开始查，对应问题 2、3；三是不确定的要标出来、说出来，对应问题 4、7。第四条让它变好：先看清楚运行数据，才能改，对应问题 8、9、10。每张卡片里的圆点编号就是第 2 页的问题编号，每一行是一个设计点，后面是它在哪一页展开。从下一页开始，一条一条细讲，每页引子前的标签，标明这一页在解哪个问题。">
+<header class="hd"><span class="sec">总览</span><span class="sep"></span><span class="ttl">十个问题的答案：会出错的模型，加外面一圈程序</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead">第 2 页的十个问题，归成四条原则：<span style="color:var(--accent)">前三条让它可靠，最后一条让它变好</span></p>
+<div class="body fill tight bs" style="padding-top:0">
+  <div class="ax"><div class="axb"><b>会出错的模型</b><span>只做调查</span></div><i>＋</i><div class="axb"><b>外面一圈程序</b><span>其余都归它</span></div><i>＝</i><div class="axb hi"><b>可靠靠这圈程序，变好靠度量</b><span>大多数设计点，都在外面这圈</span></div></div>
+  <div class="ac4">
+    <div class="ap" style="--c:var(--accent)"><div class="aph"><em>可靠</em><h4>可靠的事交给程序，模型只做调查</h4><div class="apc">解决<span class="qnum">1</span><span class="qnum">5</span><span class="qnum">6</span></div></div><ul>
+      <li><span class="qnum">1</span><p>先落库再确认；结果先进发件箱再发出去<small>第 4 页</small></p></li>
+      <li><span class="qnum">5</span><p>模型给标签，程序决定发不发：有实锤、有新进展才发<small>第 11 页</small></p></li>
+      <li><span class="qnum">6</span><p>只读、指定工具、不执行资料里的命令；输出先脱敏<small>第 12 页</small></p></li></ul><div class="apn">不靠模型自觉，靠程序拦住</div></div>
+    <div class="ap" style="--c:var(--accent)"><div class="aph"><em>可靠</em><h4>先备好材料、看清问题，再开始查</h4><div class="apc">解决<span class="qnum">2</span><span class="qnum">3</span></div></div><ul>
+      <li><span class="qnum">2</span><p>只给地图，正文按需读；能先取的材料由程序先取<small>第 5–6 页</small></p></li>
+      <li><span class="qnum">3</span><p>程序补全材料、判类型；模型按需找对象、定范围<small>第 7–8 页</small></p></li></ul><div class="apn">给地图，不给全文；先看清想干什么、问的是谁，再查</div></div>
+    <div class="ap" style="--c:var(--accent)"><div class="aph"><em>可靠</em><h4>不确定的要标出来、说出来</h4><div class="apc">解决<span class="qnum">4</span><span class="qnum">7</span></div></div><ul>
+      <li><span class="qnum">4</span><p>工具把“没查到什么”标在结果里；结论里写出“不知道”<small>第 9–10 页</small></p></li>
+      <li><span class="qnum">7</span><p>三种积累：群记忆、闭环经验、历史归档；确认后才进库<small>第 13 页</small></p></li></ul><div class="apn">“不知道”要被记录，也要被说出来；确认过才算经验</div></div>
+    <div class="ap" style="--c:#26357F"><div class="aph"><em>变好</em><h4>先看清楚运行数据，才能改</h4><div class="apc">解决<span class="qnum r">8</span><span class="qnum r">9</span><span class="qnum r">10</span></div></div><ul>
+      <li><span class="qnum r">8</span><p>拿人工的独立处理对照；证据、结论分两层打 A / B / C<small>第 14 页</small></p></li>
+      <li><span class="qnum r">9</span><p>线上记录找问题；固定题复跑验证<small>第 15、17 页</small></p></li>
+      <li><span class="qnum r">10</span><p>耗时拆成工具调用和探索下钻两段，各有目标和指标<small>第 16 页</small></p></li></ul><div class="apn">分层对照，才知道错在哪一层；耗时拆开看</div></div>
+  </div>
+</div>
+</section>
+
+<section class="slide zp4" data-notes="开工这一章讲：调查开始前，一个请求怎么一路走到模型手里，又怎么回到群里。三个仓库：mcp-server、IA（intelligent-assistant）、duty-robot。图里蓝线是请求往前走，橙线是结果回去，虚线是回执和状态同步。①消息进来：NOC、P0、Live Issue 或群里 @ 机器人，推送到 mcp-server。mcp-server 是入口和出口：验来源和消息身份，做原子去重，放进 Redis 队列。②入队转发：mcp-server 把请求转给 IA。IA 负责受理和管理：受理机投、群聊和 Web 请求，管理本机的 Runtime 进程，并把案例和运行状态同步成案例库，供 Web 查询和报表。③转给本机 Runtime：Runtime 先把请求落库，落库之后才回确认；IA 拿到确认，才向 mcp-server 回执，mcp-server 收到回执才把这条请求从队列里移除。所以请求不会因为中间某一环失败而丢。Runtime 之后排队、建工作区（下一页展开）、取好材料、写好会话地图。④派发会话：交给 HAPI，新问题开新会话，追问接回原会话。⑤启动调查：Claude Code 一启动，四份材料已在手边，只管调查。⑥交回结果：Claude Code 把结果交回 Runtime 校验，写进发件箱。⑦投递：Publisher 从发件箱取出，经 mcp-server 的发消息桥；投递状态有待发、发送中、已确认、未知，未知时先对账，不盲目重发。⑧发到群：mcp-server 验权、选 Bot，发回原群、原线程。为什么这样分：排队、存档、取材料、投递，这些必须可靠的事交给程序，模型出错也不会丢消息、漏材料、重复发。说明：这是迁移前的架构，也就是现在运行的这套；迁移到 Gateway 加 Sandbox 的设计不在本页范围。HAPI 和 Claude Code 具体在哪个仓库我没有逐个核实，图里只标了三个仓库的整体归属。">
+<header class="hd"><span class="sec">⓪ 开工</span><span class="sep"></span><span class="ttl">请求怎么走到模型手里，又怎么回到群里</span><span class="meta"><span class="sn"><span class="on">开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 1</i>请求不能丢、不能重</span>三个仓库各管一段：mcp-server 管进出，IA 管受理，Runtime 把准备做完；<span style="color:var(--accent)">可靠的事交给程序，模型只管调查</span></p>
+<div class="body fill tight" style="padding-top:0;gap:6px"><div class="arch4"><svg viewBox="0 0 890 352" role="img" aria-label="请求在 mcp-server、IA、Runtime、HAPI、Claude Code 之间的流转"><defs><marker id="mk4b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2F5BD0"/></marker><marker id="mk4o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0L10 5L0 10z" fill="#EE4D2D"/></marker><marker id="mk4g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8a8f9c"/></marker></defs><rect x="0" y="8" width="122" height="310" rx="6" fill="#fff" stroke="#7a8194" stroke-width="1.4"/><rect x="0" y="8" width="122" height="40" rx="6" fill="#7a8194"/><rect x="0" y="32" width="122" height="16" fill="#7a8194"/><text x="61.0" y="26" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">SeaTalk</text><text x="61.0" y="41" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">消息进、结果出</text><text x="61.0" y="84" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">NOC · P0</text><text x="61.0" y="98" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">Live Issue</text><text x="61.0" y="112" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">群里 @ 机器人</text><text x="61.0" y="222" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">原群 / 原线程</text><text x="61.0" y="236" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">收到结果</text><rect x="192" y="8" width="122" height="310" rx="6" fill="#fff" stroke="#26357F" stroke-width="1.4"/><rect x="192" y="8" width="122" height="40" rx="6" fill="#26357F"/><rect x="192" y="32" width="122" height="16" fill="#26357F"/><text x="253.0" y="26" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">mcp-server</text><text x="253.0" y="41" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">入口 + 出口</text><text x="253.0" y="84" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">验来源和身份</text><text x="253.0" y="98" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">原子去重</text><text x="253.0" y="112" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">放进 Redis 队列</text><text x="253.0" y="222" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">发消息的桥</text><text x="253.0" y="236" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">验权、选 Bot</text><rect x="384" y="8" width="122" height="128" rx="6" fill="#fff" stroke="#2F5BD0" stroke-width="1.4"/><rect x="384" y="8" width="122" height="40" rx="6" fill="#2F5BD0"/><rect x="384" y="32" width="122" height="16" fill="#2F5BD0"/><text x="445.0" y="26" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">IA</text><text x="445.0" y="41" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">受理 + 管理</text><text x="445.0" y="84" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">受理请求</text><text x="445.0" y="98" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">管理 Runtime 进程</text><rect x="384" y="250" width="122" height="68" rx="6" fill="#F5F7FD" stroke="#2F5BD0" stroke-width="1.2" stroke-dasharray="4 3"/><text x="445" y="272" font-size="11.5" font-weight="700" fill="#1D3FA8" text-anchor="middle">IA 案例库</text><text x="445" y="288" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">Web 查询、报表</text><text x="445" y="302" font-size="10" font-weight="400" fill="#777" text-anchor="middle">只读投影</text><rect x="576" y="8" width="122" height="310" rx="6" fill="#fff" stroke="#6b7280" stroke-width="1.4"/><rect x="576" y="8" width="122" height="40" rx="6" fill="#6b7280"/><rect x="576" y="32" width="122" height="16" fill="#6b7280"/><text x="637.0" y="26" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">Runtime</text><text x="637.0" y="41" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">把准备做完</text><text x="637.0" y="84" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">落库后才确认</text><text x="637.0" y="98" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">排队、建工作区</text><text x="637.0" y="112" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">（第 5 页）</text><text x="637.0" y="126" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">取材料、写会话地图</text><text x="637.0" y="232" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">校验结果</text><text x="637.0" y="246" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">写进发件箱</text><text x="637.0" y="260" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">Publisher 投递</text><rect x="768" y="8" width="122" height="110" rx="6" fill="#fff" stroke="#3D6FD8" stroke-width="1.4"/><rect x="768" y="8" width="122" height="40" rx="6" fill="#3D6FD8"/><rect x="768" y="32" width="122" height="16" fill="#3D6FD8"/><text x="829.0" y="26" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">HAPI</text><text x="829.0" y="41" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">把会话接上</text><text x="829.0" y="84" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">新问题开新会话</text><text x="829.0" y="98" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">追问接回原会话</text><rect x="768" y="170" width="122" height="148" rx="6" fill="#fff" stroke="#EE4D2D" stroke-width="1.4"/><rect x="768" y="170" width="122" height="40" rx="6" fill="#EE4D2D"/><rect x="768" y="194" width="122" height="16" fill="#EE4D2D"/><text x="829.0" y="188" font-size="13.5" font-weight="700" fill="#fff" text-anchor="middle">Claude Code</text><text x="829.0" y="203" font-size="10" font-weight="400" fill="#fff" text-anchor="middle">只管调查</text><text x="829.0" y="226" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">一启动，四份材料</text><text x="829.0" y="240" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">已在手边（第 6 页）</text><text x="829.0" y="254" font-size="10.5" font-weight="400" fill="#222" text-anchor="middle">读材料、调工具</text><line x1="122" y1="62" x2="192" y2="62" stroke="#2F5BD0" stroke-width="1.8" marker-end="url(#mk4b)"/><text x="157.0" y="42" font-size="10" font-weight="700" fill="#1D3FA8" text-anchor="middle">① 消息进来</text><text x="157.0" y="54" font-size="10" font-weight="400" fill="#1D3FA8" text-anchor="middle">回调 / 推送</text><line x1="314" y1="62" x2="384" y2="62" stroke="#2F5BD0" stroke-width="1.8" marker-end="url(#mk4b)"/><text x="349.0" y="42" font-size="10" font-weight="700" fill="#1D3FA8" text-anchor="middle">② 入队转发</text><text x="349.0" y="54" font-size="10" font-weight="400" fill="#1D3FA8" text-anchor="middle">Redis 队列</text><line x1="384" y1="100" x2="314" y2="100" stroke="#8a8f9c" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#mk4g)"/><text x="349.0" y="114" font-size="10" font-weight="700" fill="#666" text-anchor="middle">受理回执</text><text x="349.0" y="126" font-size="10" font-weight="400" fill="#666" text-anchor="middle">ACK 才出队</text><line x1="506" y1="62" x2="576" y2="62" stroke="#2F5BD0" stroke-width="1.8" marker-end="url(#mk4b)"/><text x="541.0" y="42" font-size="10" font-weight="700" fill="#1D3FA8" text-anchor="middle">③ 转给本机</text><text x="541.0" y="54" font-size="10" font-weight="400" fill="#1D3FA8" text-anchor="middle">Runtime</text><line x1="576" y1="100" x2="506" y2="100" stroke="#8a8f9c" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#mk4g)"/><text x="541.0" y="114" font-size="10" font-weight="700" fill="#666" text-anchor="middle">落库后</text><text x="541.0" y="126" font-size="10" font-weight="400" fill="#666" text-anchor="middle">回确认</text><line x1="698" y1="62" x2="768" y2="62" stroke="#2F5BD0" stroke-width="1.8" marker-end="url(#mk4b)"/><text x="733.0" y="42" font-size="10" font-weight="700" fill="#1D3FA8" text-anchor="middle">④ 派发会话</text><text x="733.0" y="54" font-size="10" font-weight="400" fill="#1D3FA8" text-anchor="middle">新问题 / 追问</text><line x1="829" y1="118" x2="829" y2="170" stroke="#2F5BD0" stroke-width="1.8" marker-end="url(#mk4b)"/><text x="822" y="148" font-size="10" font-weight="700" fill="#1D3FA8" text-anchor="end">⑤ 启动调查</text><line x1="768" y1="205" x2="698" y2="205" stroke="#EE4D2D" stroke-width="1.8" marker-end="url(#mk4o)"/><text x="733.0" y="185" font-size="10" font-weight="700" fill="#C93A1C" text-anchor="middle">⑥ 交回</text><text x="733.0" y="197" font-size="10" font-weight="400" fill="#C93A1C" text-anchor="middle">结果</text><line x1="576" y1="205" x2="314" y2="205" stroke="#EE4D2D" stroke-width="1.8" marker-end="url(#mk4o)"/><text x="445.0" y="185" font-size="10" font-weight="700" fill="#C93A1C" text-anchor="middle">⑦ Publisher 从发件箱投递</text><text x="445.0" y="197" font-size="10" font-weight="400" fill="#C93A1C" text-anchor="middle">状态未知先对账，不盲目重发</text><line x1="192" y1="205" x2="122" y2="205" stroke="#EE4D2D" stroke-width="1.8" marker-end="url(#mk4o)"/><text x="157.0" y="185" font-size="10" font-weight="700" fill="#C93A1C" text-anchor="middle">⑧ 发到群</text><text x="157.0" y="197" font-size="10" font-weight="400" fill="#C93A1C" text-anchor="middle">验权选 Bot</text><line x1="576" y1="285" x2="506" y2="285" stroke="#8a8f9c" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#mk4g)"/><text x="541.0" y="277" font-size="10" font-weight="700" fill="#666" text-anchor="middle">同步状态</text><line x1="0" y1="340" x2="26" y2="340" stroke="#2F5BD0" stroke-width="1.8"/><text x="32" y="344" font-size="10" font-weight="400" fill="#444" text-anchor="start">请求往前走</text><line x1="112" y1="340" x2="138" y2="340" stroke="#EE4D2D" stroke-width="1.8"/><text x="144" y="344" font-size="10" font-weight="400" fill="#444" text-anchor="start">结果回去</text><line x1="214" y1="340" x2="240" y2="340" stroke="#8a8f9c" stroke-width="1.8" stroke-dasharray="4 3"/><text x="246" y="344" font-size="10" font-weight="400" fill="#444" text-anchor="start">回执 / 状态同步</text><text x="890" y="344" font-size="10" font-weight="400" fill="#888" text-anchor="end">仓库：mcp-server · intelligent-assistant（IA）· duty-robot（Runtime、HAPI 适配、Claude Code 调用）</text></svg></div><div class="foot2" style="color:#EE4D2D;font-weight:700">图里 Runtime 那一步最关键：模型开工前，要先给它备好一个工作区。下一页就展开这一步：工作区怎么建、怎么换、放什么。</div>
+</div>
+</section>
+<section class="slide" id="s5" data-notes="上一页的图里，请求落库、排队之后，Runtime 要先备好工作区，才把会话交给模型。这一页先回答“为什么要有这个目录”，再讲怎么建、怎么换、放什么。作用有四条：一，装上下文——模型一次看不全，所以系统提示词里只放会话地图 context.md，正文留在目录里按需读，能先取的材料由程序先取到 context/；二，存状态——会话满 24 小时会换，模型不记得之前聊过什么，但工作目录不换、文件都在，追问和下一轮都回到这里接着查；三，划边界——群、人、线程三级目录决定谁能看到什么，resources/、guides/、evidence/ 只读，output/、scratch/ 可写，越界由 Hook 拦，不是操作系统沙箱；四，留账本——每次工具调用落在 evidence/cli/ 下，交付物在 output/，versions.json 记当次的提示词和源码摘要，所以结论能回看、能复算。位置：每个群一个群根，下面按人分个人目录，再按线程分目录；人提问落在 users/邮箱前缀 下，机器人发起（含机投）落在 bots/机器人 ID 下，结构相同。左下角是三级各管什么的口径：群根管这个群怎么办事——规矩和攒下的经验，全群共用；个人目录管这个人——换几次调查都接得上的背景；线程目录管这一次——问题、材料、证据、交付，结束可回收。越往下越临时，要长期留的东西往上写。怎么建：线程第一条消息进来时，程序先建群根（群规矩 AGENTS.md、群记忆 memory），再建线程目录（context、evidence、output、scratch），挂上知识库和代码的只读链接 resources，写标记记录这个目录属于哪个群、哪条线程；建的过程加锁，避免并发重复建；目录记在第一个提问的人名下。怎么填：每个会话启动时，程序把预取的材料写进 context/，写 issue.md，复制指导手册快照，生成 context.md 和系统提示词。同一会话里追问，只更新 issue.md、补新附件，context.md 和系统提示词不重新生成。怎么换：一个会话创建满 24 小时后，下一条消息进来时，程序给模型开一个全新的会话；工作目录不换，文件都在，上一次的回复会写成 context/previous-sessions.md，标为“历史背景，不是本次现场证据”，交给新会话。这里换的是模型的会话，不是目录。两点：线程目录是临时的，要长期留的写到群根或个人目录；线程之间互相看不到，积累那一章会讲。工作区建好了，里面要放什么？下一页讲模型手边的四份材料。">
+<header class="hd"><span class="sec">⓪ 开工</span><span class="sep"></span><span class="ttl">工作区：是什么、怎么建、怎么换、放什么</span><span class="meta"><span class="sn"><span class="on">开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 2</i>模型一次看不全</span>上一页那一步“建工作区”，建的不是一个临时文件夹：<span style="color:var(--accent)">它是程序在模型之外，给一次调查备好的四样东西</span></p>
+<div class="body"><div class="wsg"><div class="wtree"><div class="wg g1"><div class="wh"><b>群根</b><i>长期 · 群内共享</i></div><div class="wl"><code>AGENTS.md</code><span>群规矩</span></div><div class="wl"><code>memory/</code><span>群记忆，Agent 自己写</span></div><div class="wl"><code>lessons/</code><span>已闭环的经验</span><em>只读</em></div><div class="wl"><code>history/</code><span>历史对话归档，一次性</span><em>只读</em></div><div class="wg g2" style="margin-top:2px"><div class="wh"><b>users/&lt;邮箱前缀&gt;/</b><i>个人 · 长期</i></div><div class="wg g3"><div class="wh"><b>threads/&lt;线程&gt;/</b><i>一次调查 · 临时，可回收</i></div><div class="wl"><code>issue.md</code><span>问题原文</span></div><div class="wl"><code>context.md</code><span>会话地图</span></div><div class="wl"><code>context/</code><span>预取的材料（Jira、告警、附件）</span></div><div class="wl"><code>guides/</code><span>指导手册快照</span><em>只读</em></div><div class="wl"><code>resources/</code><span>链接到知识库、代码</span><em>只读</em></div><div class="wl"><code>evidence/</code><span>工具查回的证据</span><em>只读</em></div><div class="wl"><code>output/</code><span>交付产物</span><em class="rw">可写</em></div><div class="wl"><code>scratch/</code><span>临时脚本、草稿</span><em class="rw">可写</em></div></div><div class="wn">机器人发起的（含机投）落在 bots/&lt;机器人 ID&gt;/，结构相同</div></div></div><div class="wlg"><div class="wlgt">三级各管什么<i>越往下越临时，要长期留的往上写</i></div><div class="wlgr" style="--c:#26357F"><b>群根</b><span>管这个群怎么办事：规矩和攒下的经验，全群共用</span></div><div class="wlgr" style="--c:#8E5BD0"><b>个人</b><span>管这个人：换几次调查都接得上的背景</span></div><div class="wlgr" style="--c:#3D9970"><b>线程</b><span>管这一次：问题、材料、证据、交付，结束可回收</span></div></div></div><div class="s5why"><div class="pw"><h4><b>①</b>装上下文</h4><p>提示词只放地图，正文留在目录里按需读，上下文不会被撑爆</p><code>context.md · context/ · resources/</code></div><div class="pw"><h4><b>②</b>存状态</h4><p>会话会换、模型会忘，目录不会；追问和换会话都回到这里接着查</p><code>issue.md · context/previous-sessions.md</code></div><div class="pw"><h4><b>③</b>划边界</h4><p>能看、能读、能写哪里都落在路径上，越界由 Hook 拦；防误操作，不防恶意</p><code>只读 resources/ guides/ evidence/ · 可写 output/ scratch/</code></div><div class="pw"><h4><b>④</b>留账本</h4><p>证据、交付、所用版本都落盘，能回看、能复算；对外只给随机 ID</p><code>evidence/cli/ · output/ · private/versions.json</code></div></div></div><div class="s5steps"><div class="s5st"><div><h4>建 · 第一条消息进来</h4><p>先建群根，再建线程目录；加锁，归属钉在第一个提问的人</p></div></div><div class="s5st"><div><h4>填 · 每个会话启动</h4><p>预取材料进 context/，写 issue.md，生成地图和提示词</p></div></div><div class="s5st"><div><h4>更新 · 同会话追问</h4><p>只改 issue.md、补附件；地图和提示词不重生成</p></div></div><div class="s5st"><div><h4>换会话 · 满 24 小时</h4><p>换会话不换目录；上一轮回复降级为“历史背景”</p></div></div></div><div class="foot2">工作区建好了，里面要放什么给模型？下一页：模型手边的四份材料。</div>
+</div>
+</section>
+
+<section class="slide zp6" data-notes="模型手边有四份材料，从稳定到易变：群备忘 AGENTS.md，记这个群的业务范围、术语和协作习惯，另有一段由程序维护，写明各目录放什么、哪些内容要长期保存；群聊启动时由 Claude Code 原生加载，用户明确要求时才改；系统提示词 system_prompt_base.md，讲怎么查，群聊用更短的群聊提示词，随指导手册包发版；会话地图 context.md，讲去哪找东西，包括工作区目录地图、可用指导手册（指导手册）的目录、命令怎么写、SSC 服务索引和术语表、本群的历史经验索引和群助手设置，线程首次准备时生成并接在系统提示词后面；问题材料 issue.md 和 context/，讲查什么，第一轮作为输入给到，追问只补新的。两条原则：只放地图，正文按需读，知识只当线索；能先拿的开工前就拿好，模型拿不到抓取凭据，拿不到的标缺口。注意区分：context.md 是会话地图，一个会话生成一次，不放问题材料；context/ 是目录，放这次问题的材料（每个 Jira、告警分析、附件各一个文件，用 prepared.json 做索引），issue.md 放问题原文，三者合称本次问题材料，追问时更新。两者名字相近，是代码里先后命名的结果。系统提示词里的方法和标准，就是后面查证据和下结论两章的内容。细节见附录 D、E。要点：只给地图、正文按需读，材料由程序先取。依赖：要有稳定的索引。材料备好之后，下一页看这个问题想干什么、问的是谁。">
+<header class="hd"><span class="sec">⓪ 开工</span><span class="sep"></span><span class="ttl">模型手边的四份材料</span><span class="meta"><span class="sn"><span class="on">开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 2</i>模型一次看不全</span>四份材料从稳定到易变排开；<span style="color:var(--accent)">每份只给地图，正文按需读；能先拿的，开工前就拿好</span></p>
+<div class="body fill tight" style="padding-top:0;gap:9px">
+  <div class="axis"><span>▲ 最稳定</span><span>什么时候给到</span></div>
+  <div class="stack4 grow"><div class="ly" style="border-left-color:#26357F"><b>群备忘<small>AGENTS.md</small></b><div class="q"><b>这个群是干什么的</b>：业务范围、常用术语、协作习惯；另有一段写明各目录放什么、哪些内容要长期留</div><div class="w">长期有效，人可让它改</div></div><div class="ly" style="border-left-color:#2F5BD0"><b>系统提示词<small>system_prompt_base.md</small></b><div class="q"><b>怎么查</b>：调查方法、证据标准、结论写法</div><div class="w">随版本发布</div></div><div class="ly" style="border-left-color:#6E8FE0"><b>会话地图<small>context.md（文件）</small></b><div class="q"><b>去哪找东西</b>：目录和文件清单、指导手册目录、命令用法、SSC 服务和术语表、本群历史经验索引</div><div class="w">每个会话一份，不随问题变</div></div><div class="ly" style="border-left-color:#EE4D2D"><b>本次问题材料<small>issue.md + context/（目录）</small></b><div class="q"><b>查什么</b>：这次的问题和对话、链接正文、附件和图片</div><div class="w">每轮更新</div></div></div>
+<div class="foot2">注意：context/ 是这次问题的材料目录，context.md 是会话地图文件，两者不同。细节见附录 B（系统提示词）、C（会话地图）、D、E。</div>
+</div>
+</section>
+<section class="slide" data-notes="这一页讲一个问题进来，怎么被看清楚它想干什么。分四层。第一层，程序按输入里有什么来补全：带告警就分析规则、按规则原式查事件前后的时序；带 Jira 就抓正文和关联单；群聊会拼上线程历史、引用的消息和转发的聊天记录；附件下载并转成能读的格式。不同来源在入口先做的事也不同，细节见附录 E。第二层，判类型：机投流量包括 P0、NOC、Live Issue，程序在开工前用小模型 JEV 判断这是查告警、查业务异常，还是咨询；置信度不到 0.55 就不判；结果只作为方向提示写进首轮输入，不是证据；正式 P0 不调 JEV，直接判为告警；群聊跳过这一层。第三层，找对象：模型在缺服务身份时调用一次 entity-pick，从服务目录里选出候选服务，同时找同类历史问答；候选要用服务图谱核验后才能填进查询。第四层，定范围：模型自己读题。机投的系统提示词要求第一步还原问题，分清预期和实际、对象、市场和环境、已做的处置，缺的保持未知；另有一条规则，用户只要求定位或参数交接时，交接完成就收尾。群聊的系统提示词只有一句：根据本轮请求回答、澄清或只读取证，普通咨询直接回答。所以群聊里咨询还是调查完全由模型判断，例如问配置含义就直接回答，问这单为什么卡住就开始取证。观点：想干什么和问的是谁分开判，两者之间没有程序连接，靠模型拼起来；意图判对没有，目前还没有度量。下一页展开第三层：问题怎么匹配到具体的 CMDB 和 SDU。">
+<header class="hd"><span class="sec">⓪ 开工</span><span class="sep"></span><span class="ttl">看清问题：想干什么、问的是谁</span><span class="meta"><span class="sn"><span class="on">开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 3</i>问题想干什么，说不清</span>材料备好后，程序补全、判类型，模型找对象、定范围；<span style="color:var(--accent)">先看清问题，再开始取证</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px"><table class="grow see"><thead><tr><th style="width:150px">层</th><th>做什么</th><th style="width:175px">谁、什么时候</th><th class="c" style="width:78px">机投<small>P0 / NOC / Live Issue</small></th><th class="c" style="width:58px">群聊</th></tr></thead><tbody><tr><td><b>① 补全问题</b></td><td>按输入里有什么来补：告警 → 规则和时序；Jira → 正文和关联单；群聊 → 线程、引用、转发；附件 → 能读的格式<small>各来源入口的差异见附录 E</small></td><td>程序，开工前</td><td class="ch"><span class="y">✓</span></td><td class="ch"><span class="y">✓</span></td></tr><tr><td><b>② 判类型：想干什么</b></td><td>查告警，查业务异常，还是咨询；小模型（JEV）判，把握不够就不判<small>结果只作方向提示，不是证据</small></td><td>程序，开工前</td><td class="ch"><span class="y">✓</span><small>P0 直接判告警</small></td><td class="ch"><span class="n">✗</span><small>跳过</small></td></tr><tr><td><b>③ 找对象：问的是谁</b></td><td>从服务目录选出候选服务，同时找同类历史问答（entity-pick）<small>候选要用服务图谱核验，才能填进查询；怎么匹配见第 8 页</small></td><td>模型按需调用；只在缺服务身份时，一次</td><td class="ch"><span class="y">✓</span></td><td class="ch"><span class="y">✓</span></td></tr><tr><td><b>④ 定范围：要查到哪</b></td><td>分清预期和实际、对象、市场、时间窗；判断要根因、只要定位，还是直接回答</td><td>模型自己读题判断</td><td class="ch"><span class="y">✓</span></td><td class="ch"><span class="y">✓</span><small>唯一一层</small></td></tr></tbody></table>
+  <div class="row c2" style="gap:12px">
+    <div class="claim"><h3>“想干什么”和“问的是谁”分开判</h3><p>类型由程序在开工前判；对象由模型在调查中按需找。两者之间没有程序连接，靠模型把它们拼成“这题要怎么查”</p></div>
+    <div class="claim"><h3>第④层：模型自己读题定范围</h3><ul class="ex"><li>问“这个配置什么意思” → <b>咨询</b>，直接回答</li><li>问“这单为什么卡住” → <b>调查</b>，开始取证</li><li>只要“帮我定位服务” → <b>定位完就停</b></li></ul></div>
+  </div>
+</div>
+</section>
+<section class="slide zp8" data-notes="这一页先讲四个入口。入口一是起点：告警已经给出指标、规则、维度，比如服务、cid、path、实例，先直接按这些维度查，不调 entity-pick；后面下钻日志、库表或代码而缺服务身份时，再按入口二、三、四补，补的时候按已有信息从多到少选。入口二，已经有 SDU、CMDB、CAT domain、主机或日志链接，直接 service-graph show，不调 entity-pick；入口三，只有关键词，比如服务名片段，先 service-graph search 找候选，再 show 取详情；入口四，只有业务描述，才做一次 entity-pick，拿问题摘要去猜服务，输出的是候选，再核验。告警里通常有服务名，所以入口一之后多半补到入口三。show 一次取回日志参数、各市场 SDU、仓库、库表、上下游和 72 小时关联变更。选哪个入口，是模型按系统提示词判断的，程序不强制，业务描述和技术关键词的边界也靠模型判断。最后都要用这次的日志确认，候选、排名、名字相似都不是归属证据。附录 H 那条真实告警就是这样：先按告警维度复核（入口一），下钻时缺身份才用入口三补。service-graph search 内部怎么找候选，我没有核实；线上实际各入口的调用比例，也没有数据。下面的表讲入口四里 entity-pick 内部怎么一步步收窄。 上一页说第三层“找对象”由模型按需调用 entity-pick，这一页讲它怎么把一个只有业务说法的问题，一步步收窄到具体的 CMDB 和 SDU。核心是范围越来越窄，每一步靠不同的东西对上。表里的问题是我假设的，目录和快照是真实数据。①问题变摘要：entity-pick 的输入不是问题原文，是模型写的摘要：模型读问题和会话地图里的服务索引、术语表，提炼动作、对象、症状、市场，最多 2000 字。需要说明，entity-pick 本身不读 context.md，会话地图是帮模型写摘要。例子：“TW 的物流文件处理失败”。②选服务实体：小模型 JEV 拿摘要去对 217 个服务实体的名称、别名和一句话职责，选一个最匹配的，可以选 none（217 个实体存放在 entity-pick 目录下的 entities-en-catalog.jsonl，一行一个实体）；置信度要达到 0.35，否则当没选。实体目录来自评审过的群知识和 Wiki 实体页，加上 XSRE 身份普查。例子选中 LFHS 物流文件处理服务。同一次请求里还会找同类历史问答，约 1376 张里最多 3 张，置信度 0.5。③取 SDU 家族：每个实体自带“所属家族”字段，不用再猜。LFHS 有三个家族：lpop-lfhsapi、lpop-lfhsgrpc、lpop-lfhstask。④取具体 SDU 和 CMDB：用家族去查部署清单（代码里叫身份快照），共 3478 条（10 月 27 日刷新），每条有 SDU、CMDB、环境、市场、CAT domain 和仓库。这三个家族在 live 环境下共 34 条；摘要里写了 TW，就收窄到 3 条，每个家族一条；没写环境默认 live，没写市场就不按市场过滤。最多返回 10 行。⑤确认是哪一个：到这里候选只是目录提示，不是证据。三个 TW 服务里谁执行了出错的动作，目录回答不了，要模型用 service-graph show 绑定真实身份，再用本事件的日志确认谁收到了出错的请求。门槛 0.35 是代码里的默认值，可被环境变量覆盖，线上是否改过我没有核对；也没有看到这个值的校准评估。接下来讲缺什么就用工具补什么。">
+<header class="hd"><span class="sec">⓪ 开工</span><span class="sep"></span><span class="ttl">找对象：从问题匹配到 CMDB、SDU</span><span class="meta"><span class="sn"><span class="on">开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 3</i>问题想干什么，说不清</span>按问题里已有什么选入口：<span style="color:var(--accent)">信息越少越靠猜（entity-pick），最后都用本次日志确认</span></p>
+<div class="body fill tight" style="padding-top:0;gap:5px"><div class="en4"><div class="en c"><div class="et">入口 ①</div><h4>告警已给出指标、规则、维度（服务、cid、path、实例）</h4><p class="ew">先按这些维度查，<b>不调 entity-pick</b></p><p class="eh">起点：下钻缺身份时，再按 ②③④ 补</p></div><div class="en d"><div class="et">入口 ②</div><h4>已有 SDU / CMDB / CAT domain、主机或日志链接</h4><p class="ew">直接 <code>service-graph show</code><br><b>不调 entity-pick</b></p><p class="eh">身份已知，不用猜</p></div><div class="en b"><div class="et">入口 ③</div><h4>只有关键词（如服务名片段）</h4><p class="ew"><code>service-graph search</code> &lt;关键词&gt; 找候选，再 <code>show</code></p><p class="eh">关键词来自问题或告警</p></div><div class="en a"><div class="et">入口 ④</div><h4>只有业务描述</h4><p class="ew"><code>entity-pick</code>：摘要 → 服务 → SDU / CMDB 候选（猜），再核验</p><p class="eh">信息最少，靠猜</p></div></div><div class="subh" style="margin-top:0">入口 ④ 里，entity-pick 是怎么一步步收窄的</div><table class="grow fun"><thead><tr><th style="width:132px">阶段</th><th style="width:156px">范围（越往下越窄）</th><th>怎么做</th><th style="width:262px">示例（问题假设，数据真实）</th></tr></thead><tbody><tr><td class="fst" style="border-left:5px solid #9aa3b5"><b>① 问题 → 摘要</b><small>模型</small></td><td class="fsc"><span class="fbl">一段摘要</span><div class="fbar" style="width:100%;background:#9aa3b5"></div></td><td class="fky">模型读完问题，改写成一段话：哪个市场、什么对象、做什么时出了什么问题</td><td class="fex">“TW 的物流文件处理失败”</td></tr><tr><td class="fst" style="border-left:5px solid #26357F"><b>② 选服务实体</b><small>小模型 JEV</small></td><td class="fsc"><span class="fbl">217 个实体里选 1</span><div class="fbar" style="width:100%;background:#26357F"></div><small class="fsrc"><code>entities-en-catalog.jsonl</code></small></td><td class="fky">小模型拿这段话和 217 个服务的介绍（名字、别名、职责）比，挑最像的一个；把握低于 0.35 算没选出</td><td class="fex"><code>LFHS 物流文件处理服务</code></td></tr><tr><td class="fst" style="border-left:5px solid #2F5BD0"><b>③ 取 SDU 家族</b><small>程序</small></td><td class="fsc"><span class="fbl">1 个实体 → 3 个家族</span><div class="fbar" style="width:62%;background:#2F5BD0"></div></td><td class="fky">目录里每个服务都登记了它包含哪几组部署（SDU 家族），程序直接查，不让模型猜</td><td class="fex"><code>lpop-lfhsapi</code> · <code>lpop-lfhsgrpc</code><br><code>lpop-lfhstask</code></td></tr><tr><td class="fst" style="border-left:5px solid #3D6FD8"><b>④ 取 SDU + CMDB</b><small>程序</small></td><td class="fsc"><span class="fbl">3478 条 → 34 条 → 3 条</span><div class="fbar" style="width:38%;background:#3D6FD8"></div></td><td class="fky">拿这几组去部署清单查具体的 SDU 和 CMDB，只留问题里的市场；没说环境就只看 live</td><td class="fex"><code>lpop-lfhsapi-live-tw</code><br>↔ <code>…file_handler_service_api</code><small>grpc、task 各一行，共 3 行</small></td></tr><tr class="last"><td class="fst" style="border-left:5px solid #EE4D2D"><b>⑤ 确认是哪一个</b><small>模型</small></td><td class="fsc"><span class="fbl">3 个里确认</span><div class="fbar" style="width:16%;background:#EE4D2D"></div></td><td class="fky">候选交给 service-graph show 核验身份，再看这次日志里哪个服务收到了出错的请求</td><td class="fex">哪个收到出错的请求，由日志定</td></tr></tbody></table></div>
+</section>
+<section class="slide zp9" data-notes="这一页接上一页：看清问题、找到对象之后，还缺什么就补什么。补的方式是两样东西配合：指导手册（guide）和 duty-cli。duty-cli 是值班取证命令行：只读地去日志、监控、变更、库表等系统把证据查回来，人和 Agent 共用同一个工具。指导手册是按现象写的操作手册：告诉模型这种现象先查什么、用 duty-cli 的哪条命令、什么时候停。怎么配合：模型先看现象，翻对应的指导手册，手册指出第一条命令，duty-cli 执行后返回结构化结果，里面写明查到了什么、没查到什么；再按结果回手册找下一步。表里每一行就是一种现象：左边是现象，中间是翻哪篇，右边是手册指的第一条命令。服务定位那一行：service-graph 是统一的 CMDB / SDU / 仓库 / 库表图谱，show 凭完整的 CMDB 或 SDU 一次返回日志参数、各市场 SDU、仓库、库表、上下游和 72 小时关联变更；search 按关键词找候选，候选不等于实际责任服务；这个图谱本身不会自动拿问题摘要去匹配，摘要匹配是第 8 页 entity-pick 的事，匹配出的候选再交给 show 核验。附录 H 是一条真实 P0 告警的 21 条工具调用顺序，前四步正是这条路径。例子：告警带 Grafana 面板链接，翻《现象与影响》，手册说先用 prometheus-query panel-query 查原面板的事故时段，不先猜指标和服务；发现异常后，再翻《链路追踪》，用 cat trace 沿变差的依赖往下追。指导手册我在仓库里核对到 12 篇：现象与影响、链路追踪、服务定位、运行指标、Kafka、缓存、数据库指标、变更、数据与代码、精确配置、现象到首查，另有 1 篇是群助手设置，不属于调查。之前写的 14 篇我没能核实，以 12 篇为准。每篇手册分速查和深入两层：先写常用查询和什么时候停，有异常或缺口才读深入。指导手册和 duty-cli 一起发版，当前 CLI 1.0.34 配 guides-v133。duty-cli 服务端版 23 项能力，约 485 个监控面板（数据库面板未计），4 类变更。入口、设计思路、覆盖范围和待补的使用数据见附录 F、G；七步方法见附录 B。结果区分有数据、值为零、没上报、查询失败，并写明是否截断，下一章靠它守住“不知道”。">
+<header class="hd"><span class="sec">① 查证据</span><span class="sep"></span><span class="ttl">补缺口的工具：指导手册指路，duty-cli 取证</span><span class="meta"><span class="sn"><span>开工</span><span class="on">查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 4</i>证据永远查不全</span>先翻指导手册找第一条命令，<span style="color:var(--accent)">再用 duty-cli（只读取证命令行）去各系统把证据查回来</span></p>
+<div class="body fill tight" style="padding-top:0;gap:8px"><div class="qrs"><b>每条命令的结果都写明：</b><span class="qk">有数据</span><span class="qk">值为零</span><span class="qk">没上报</span><span class="qk">查询失败</span><span class="qk">是否截断</span><em>“没查到什么”标在结果里，下一页的“不知道”靠它</em></div><table class="grow t9"><thead><tr><th style="width:236px">看清问题后，现象是</th><th style="width:176px">先翻哪篇指导手册</th><th>手册指的第一条 duty-cli 命令</th></tr></thead><tbody><tr><td>告警带 Grafana 面板链接；成功率、错误码波动</td><td class="hb"><b>现象与影响</b><small>phenomena</small></td><td class="cm"><code>prometheus-query panel-query</code> 查原面板事故时段；<code>alert analyze</code> 复核规则</td></tr><tr><td>跨服务变慢或失败；要找下游、具体请求</td><td class="hb"><b>链路追踪</b><small>request-flow</small></td><td class="cm"><code>prometheus-query cat trace</code> 沿变差的依赖追；消息驱动用 <code>cat async</code></td></tr><tr><td>不知道对应哪个服务、仓库、库表</td><td class="hb"><b>服务定位</b><small>location</small></td><td class="cm"><code>service-graph show</code> 凭完整 CMDB / SDU 一次取日志参数、各市场 SDU、仓库、库表、上下游；只有关键词时先 <code>search</code> 找候选</td></tr><tr><td>CPU、内存、Kafka 积压、缓存、数据库异常</td><td class="hb"><b>运行指标、组件指标</b><small>runtime · kafka · cache · db-runtime</small></td><td class="cm"><code>pod cpu</code> · <code>kafka</code> · <code>cache</code> · <code>db</code>，先固定服务和事故窗口</td></tr><tr><td>发布或配置之后出问题</td><td class="hb"><b>变更</b><small>changes</small></td><td class="cm"><code>change release</code> · <code>apollo</code> · <code>business-change</code>，围绕异常拐点查</td></tr><tr><td>数据状态不对，要对照代码逻辑</td><td class="hb"><b>数据与代码</b><small>data</small></td><td class="cm"><code>data</code> 点查同一对象；<code>git log / show</code> 看读写它的代码</td></tr><tr><td>业务规则、资格条件有争议</td><td class="hb"><b>精确配置</b><small>rules</small></td><td class="cm"><code>apollo keys / compare</code> 核对精确配置项的当前值</td></tr><tr><td>现象说不清，不知道从哪查</td><td class="hb"><b>现象到首查</b><small>triage</small></td><td class="cm">一张对照表：按现象选首查和对照，不逐行执行</td></tr></tbody></table><div class="foot2">共 12 篇指导手册；duty-cli 23 项能力、≈485 个监控面板、4 类变更。详见附录 F、G；H 是一条真实告警的调用顺序；七步见附录 B。</div></div>
+</section>
+<section class="slide zp10" data-notes="上一页补证据的工具会把“查到什么、没查到什么”标在结果里。这一页讲：怎么把这些写成一份结论，查不全时怎么写。先看结论长什么样：系统提示词规定了固定的骨架，开头一行是状态标签，下面三段：问题总结、目前结论、排查细节。状态标签共六个，“继续排查”和“停止排查”各分“已有阶段性证据”和“未发现阶段性证据”，另外两个是“需要人类协助”。标签只用于内部路由，群里看到的主消息只有三段。左边的例子沿用第 2 页那条 P0 告警“TW 店配订单拿不到运单号”，内容是演示用的假设，不是真实调查。右边是四种最容易说过头的情况和对应写法：查不到不等于正常；抽查不等于全量；说没有要带范围；历史案例只是线索。示例数字是写法示例。底部两点：一是什么算实锤，系统里叫阶段性证据，只认两种：亲眼看到报障对象在事发时段的异常，或逐跳看到我方发出加对方收到的记录；只找到对象、只看到状态、某处查不到、历史相似、只靠读代码、工具超时，都不算。二是拿不准就当没实锤，提示词要求宁可不发，不要发错；但这些规则只写在提示词里，没有程序检查，第 12 页会回到这一点。下一页看这个标签怎么决定结论发到哪。">
+<header class="hd"><span class="sec">② 下结论</span><span class="sep"></span><span class="ttl">结论怎么写：一份固定骨架，查不全就写“不知道”</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span class="on">判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 4</i>证据永远查不全</span>把查到的写成一份结论：先标有没有实锤，再<span style="color:var(--accent)">写明哪些还没确认，不拿推理当事实</span></p>
+<div class="body fill tight" style="padding-top:0;gap:8px"><div class="exl"><b>示例线</b>沿用第 2 页那条 P0 告警“[TW] 店配订单拿不到运单号”；下面的结论内容是演示用的假设，不是真实调查</div><div class="g10"><div class="mb"><div class="mbh">一份结论长什么样（示例）</div><div class="mbl">【继续排查 - 已有阶段性证据】</div><p><b>问题总结</b>：TW 店配订单拿不到运单号</p><p><b>目前结论</b>：建单后回写运单号时调用物流侧报错，没有写成功；报错原因尚未确认</p><p><b>排查细节</b>：</p><ul><li>05-22 16:50（UTC+8）建单后，这批订单的回写请求日志均在调用物流侧时报错</li><li>同时段对照的正常订单都有运单号，这批没有</li><li>还没确认：物流侧的报错原因</li></ul><div class="mbn">状态标签共六个：“继续排查”“停止排查”各分“已有 / 未发现阶段性证据”，另有两个“需要人类协助”。标签不发进群，群里只看到三段</div></div><div class="rt10"><div class="subh" style="margin-top:0">四种最容易“说过头”的情况</div><table class="grow t10"><thead><tr><th>情况</th><th>✗ 别这样写</th><th>✓ 这样写</th></tr></thead><tbody><tr><td>查询失败、超时、没权限</td><td class="no">正常</td><td class="ok">没查到</td></tr><tr><td>只看了前 50 条</td><td class="no">都正常</td><td class="ok">这 50 条里没见到</td></tr><tr><td>想说“没有发布”</td><td class="no">没有发布</td><td class="ok">16:00–17:00 没有发布</td></tr><tr><td>找到相似的历史案例</td><td class="no">原因和上次一样</td><td class="ok">先验证上次的原因，不直接当结论</td></tr></tbody></table></div></div><div class="row c2" style="gap:12px"><div class="claim"><h3>什么算实锤（阶段性证据）</h3><p>亲眼看到报障对象本身在事发时段的报错、失败，或逐跳确认“我方发出、对方收到”。只找到对象、只看到状态字段、某处查不到、历史相似、只读了代码、工具超时，都不算</p></div><div class="claim"><h3>拿不准，就当没实锤</h3><p>标签决定这条结论发不发业务群（第 11 页），宁可不发，也不发错。这套写法只写在提示词里，靠模型自觉，第 12 页回到这一点</p></div></div></div>
+</section>
+<section class="slide zp11" data-notes="上一页写好了一条结论，结论开头有状态标签。这一页讲：这条结论发到哪，以及调查中还有哪些时刻要不要开口。不是有话就说。主线是结论的去向：程序看标签里有没有“已有阶段性证据”，有才发到业务群，主消息只含三段；没有就只进观察群，不打扰业务群；群里有人提问一定回复。除了发结论，还有三个要不要开口的时刻：一是调查中有了新进展，由小模型 JEV 判断值不值得告诉大家，阈值 0.65，两条之间至少隔 20 秒，并和已发、待发内容去重；二是结论摘要刚写好，程序从写文件的参数流里截取三段摘要先发，不等全文写完，代码已实现，上线待确认；三是群里有人说话没 @ 它，JEV 判断是不是在跟它说话，阈值 0.85，很有把握才接话。前两个发生在报警自动进来的机投调查里，第三个发生在人在群里聊的群聊里。JEV 是只回答是或否的小模型。两点：难点是值得说没有标准答案，排除怀疑和被卡住值得说，条数和相似案例不值得说；原则是拿不准就不说，JEV 出错或超时不接话、少发一条进展，但最终结论照发。阈值是代码里的默认值，还没评估过。细节见附录 I。这一章靠的是模型写标签、程序做路由，但模型自己标的标签对不对，没人复核。下一页讲：模型守不住规矩时，程序还拦着什么。">
+<header class="hd"><span class="sec">③ 说出口</span><span class="sep"></span><span class="ttl">说出口：一条结论发到哪，什么时候开口</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span class="on">说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 5</i>该不该开口，拿不准</span>结论有实锤才发业务群；<span style="color:var(--accent)">进展有新信息才发，拿不准就不说</span></p>
+<div class="body fill tight" style="padding-top:0;gap:8px"><div class="exl"><b>示例线</b>上页那条结论带“已有阶段性证据”，所以发到业务群；调查中“排除了另一个怀疑”值得发，只说“查到 3 条日志”不值得</div><div class="pipe m f11"><div>写好一条结论<small>开头带状态标签</small></div><i>›</i><div class="hot">标签里有“已有阶段性证据”吗？<small>只认带直接记录的两种实锤</small></div><i>›</i><div>有：发到业务群<small>主消息只含三段：问题总结、目前结论、排查细节</small></div><i>›</i><div>没有：只进观察群<small>不打扰业务群；群里有人提问，一定回复</small></div></div><div class="subh" style="margin-top:0">除了发结论，还有三个要不要开口的时刻</div><table class="grow t11"><thead><tr><th style="width:176px">时刻</th><th style="width:140px">发生在</th><th class="c" style="width:56px">谁判</th><th>怎么决定</th></tr></thead><tbody><tr><td><b>① 调查中有了新进展</b></td><td>报警自动进来（机投）</td><td class="c">JEV</td><td>“值得告诉大家吗”：有新信息才发，把握 ≥65%；两条之间至少隔 20 秒，和已发的去重</td></tr><tr><td><b>② 结论摘要刚写好</b></td><td>报警自动进来（机投）</td><td class="c">程序</td><td>从写文件的参数里截取三段摘要先发，不等全文写完；已实现，上线待确认</td></tr><tr><td><b>③ 群里有人说话，没 @ 它</b></td><td>人在群里聊（群聊）</td><td class="c">JEV</td><td>“是在跟它说话吗”：很有把握（≥85%）才接话，拿不准就不接</td></tr></tbody></table><div class="row c2" style="gap:12px"><div class="claim"><h3>“值得说”没有标准答案</h3><p>排除了一个怀疑、被卡住了，值得说；只说“查到 3 条”、想起相似案例，不值得说</p></div><div class="claim"><h3>拿不准就不说</h3><p>JEV（只答“是 / 否”的小模型）出错或超时：不接话，少发一条进展；最终结论照发</p></div></div></div>
+</section>
+<section class="slide zp12" id="s12" data-notes="前两章的规则，比如别说过头、值得说才说，都写在提示词里，靠模型自觉。这一章回答：守不住怎么办。模型总会出错，兜底不要求它做对，只保证它错了也闯不了祸。表里一行是一条前面的规则：左边是规则，第二列是守不住会怎样，第三列是程序怎么兜，最右一列是兜不住的。第一行：说过头的结论，靠发群前只认标签兜底，没有已有阶段性证据的不进业务群，报告的格式、引用、路径也由程序校验；兜不住的是标签本身由模型自己标。第二行：刷屏和乱插话，靠小模型判断加程序管阈值、间隔、去重，小模型出错就不开口；阈值还没评估过。第三行：只调查不改动，Hook 拦下写入，只能写自己的 output 和 scratch，duty-cli 本身只读，敏感凭据只在服务端；这不是操作系统沙箱，群打开命令行后能执行什么只靠提示约束。第四行：资料里的命令不执行，能用的工具只有指定的几个且多为只读，但不执行夹带的指令本身靠模型自觉。第五行：群、个人、线程各有独立目录，路径守卫拦截越界。群设置只能调行为，写入前校验格式，写错就关闭自动行为。第六行：不外泄凭据、用户信息和内部设计。程序做的是源头脱敏：每次工具调用的输出，在交给模型和落盘之前，先把 Authorization、Cookie、token、密码、会话号、带签名的下载链接换成 REDACTED 加类型，替换了几处、哪几类记在这次调用的元数据里；数据库连接配置只留主机、端口、库名，连接串整串遮掉，连接报错不回显；群聊归档和历史对话同样脱敏；对外的事件流把服务器上的真实路径改写成 /workspace 这类占位，凭据再过一遍；.env、密钥文件、private 目录直接不让读。思路是模型没看到的，就说不出去。兜不住的是业务数据：客户身份、手机号这类字段调查时要用，程序不做脱敏，只在每一轮提示里要求“可用于定位，不得通过回复、文件或链接输出”；拒绝透露提示词和内部设计，也是同一条提示，靠模型自觉。一次调查守住了，调查结束后留下什么、下次怎么用，下一页讲积累。">
+<header class="hd"><span class="sec">④ 兜底</span><span class="sep"></span><span class="ttl">兜底：前面的规则守不住，程序还拦着什么</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span class="on">兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 6</i>模型一定会出错</span>模型总会出错；兜底<span style="color:var(--accent)">不要求它做对，只保证它错了也闯不了祸</span></p>
+<div class="body fill tight" style="padding-top:0;gap:8px"><div class="exl"><b>示例线</b>模型若把没有日志支撑的猜测写成结论，又误标“已有阶段性证据”，程序发现不了：这就是第一行最右一格的缺口</div><table class="grow t12"><thead><tr><th style="width:176px">前面的规则</th><th style="width:150px">守不住会怎样</th><th>程序怎么兜</th><th style="width:210px">兜不住的</th></tr></thead><tbody><tr><td><b>别把推理当事实，没实锤别发群</b></td><td>说过头的结论发进业务群</td><td>发群前只认标签：没有“已有阶段性证据”的不进业务群；报告的格式、引用、路径由程序校验</td><td class="gap">标签是模型自己标的，“有没有实锤”没人复核</td></tr><tr><td><b>值得说才说</b></td><td>刷屏、乱插话</td><td>小模型判断，程序管阈值、间隔、去重；小模型出错就不开口</td><td class="gap">阈值还没评估过</td></tr><tr><td><b>只调查，不改动</b></td><td>误操作生产系统</td><td>Hook 拦下写入，只能写自己的 output 和 scratch；duty-cli 本身只读，敏感凭据只在服务端</td><td class="gap">不是操作系统级隔离；群打开命令行后，能执行什么只靠提示约束</td></tr><tr><td><b>资料里的命令不执行</b></td><td>被报警、网页、工具返回里夹带的话带偏</td><td>能用的工具只有指定的几个，且多为只读，参数先校验</td><td class="gap">“不执行夹带的指令”本身靠模型自觉</td></tr><tr><td><b>群和人互相看不到</b></td><td>串看别的群、别的人的资料</td><td>群、个人、线程各有独立目录，路径守卫拦截越界（第 5 页）</td><td class="gap">—</td></tr><tr class="nw"><td><b>不外泄：凭据、用户信息、内部设计</b></td><td>凭据、手机号、服务器路径进了群</td><td>源头脱敏：工具输出先把 token、Cookie、密码换成 <code>[REDACTED]</code>，再给模型、再落盘；对外事件流改写服务器路径；密钥文件不让读</td><td class="gap">手机号等业务字段只靠提示“不得输出”；不透露提示词也靠自觉</td></tr></tbody></table></div>
+</section>
+
+<section class="slide zp13" id="s13" data-notes="积累这一章讲：一次调查结束后，留下什么，下一次怎么用上。流程是一个循环：这次调查查证据、下结论；结束后 Agent 把群知识写进群记忆，调查记录整理成候选经验；人确认处理结果后，候选才算闭环；闭环经验进入本群经验库；下一次开工时带上记忆、经验索引和历史索引，同类问题把它当第一个怀疑对象，再去验证。例子里的“TW 的 LFHS 有三个服务”是示例。留下的东西有三种，机制和可信度都不同：第一种是群记忆，放在群根 memory/，用的是 Claude 原生自动记忆，把记忆目录指到群根 memory/，调查中 Agent 自己写，做成“问题到入口”的紧凑索引，没人审核，群聊开工时自动加载；第二种是闭环经验，放在群根 lessons/，每个线程开工时从 IA 经验库拉一次快照，落成只读文件，开工只带索引，本群最近 30 天、最多 50 条，正文按需读，拉取失败就用上一次成功快照并注明可能滞后；第三种是历史归档，放在群根 history/，是一次性导进来的冻结旧排查，聊天过程中不再新增，开工只给一个索引，开头就写明这些只是历史排查、仅供参考、不作为当前事实或操作依据。三者的可信度依次说：群记忆没人复核，最容易被当成结论；闭环经验是处理结果被确认过才入库，相对最可信；历史归档最弱，它连指导意见大多都没有，只能用来加速命中服务。三种都只是线索：下结论前要先验证，第 10 页。群、个人、线程怎么分目录，第 5 页讲过，这里不再重复。目前只有群聊用这套结构；确认流程的细节待核实，群记忆没人审核。前面六章讲的是怎么搭起来。搭好之后，怎么知道它做得对不对、好不好用、快不快？下一章讲度量，第一件事是结论对不对。">
+<header class="hd"><span class="sec">⑤ 积累</span><span class="sep"></span><span class="ttl">积累：这次留下什么，下次怎么用上</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span class="on">积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="qchip"><i>问题 7</i>下次要更聪明</span>留下的东西分三种：<span style="color:var(--accent)">群记忆、闭环经验、历史归档</span>——来源不同，可信度也不同</p>
+<div class="body fill tight" style="padding-top:0;gap:8px"><div class="exl"><b>示例线</b>这条调查结束后，留下来的东西怎么让同一个群的下一次调查起点更高</div><div class="subh" style="margin-top:0">一次调查结束后，留下什么、怎么回到下一次开工</div><div class="pipe m f13"><div>这次调查<small>查证据、下结论（上面那条结论）</small></div><i>›</i><div>留下来<small>Agent 写群记忆，如“TW 的 LFHS 有 api、grpc、task 三个服务”（示例）；调查记录整理成候选经验</small></div><i>›</i><div>人确认<small>确认处理结果后，候选才算闭环</small></div><i>›</i><div>进经验库<small>闭环经验进入本群经验库，只读</small></div><i>›</i><div>下次开工带上<small>记忆 + 经验索引 + 历史索引；同类问题当第一个怀疑对象，再去验证</small></div><i class="back">↺</i></div><div class="row" style="grid-template-columns:repeat(3,1fr);gap:9px"><div class="mc" style="--c:#C93A1C"><h3>① 群记忆<code>memory/</code></h3><em>Agent 自己写</em><p>调查中随时写成“问题 → 入口”的紧凑索引；没人审核，群聊开工时自动加载</p><i>可信度：没人复核</i></div><div class="mc" style="--c:#3D9970"><h3>② 闭环经验<code>lessons/</code></h3><em>人确认过才入库</em><p>开工只带索引：本群最近 30 天、最多 50 条；正文按需读，拉取失败用上次快照</p><i>可信度：处理结果被确认过</i></div><div class="mc" style="--c:#8a8a8a"><h3>③ 历史归档<code>history/</code></h3><em>冻结的旧排查</em><p>一次性导入，聊天中不再新增；开工只给索引，开头就写明“不作当前事实或操作依据”</p><i>可信度：最弱，只用来加速命中</i></div></div><div class="foot2">三种都只是线索，不是结论：下结论前要先验证（第 10 页）。群、个人、线程怎么分目录，见第 5 页。目前只有群聊用这套结构。</div></div>
+</section>
+
+<section class="slide zp14" data-notes="度量这一章先讲跑起来之后的三件事，再讲改完怎么验证；这一页是第一件：结论对不对。做法在 IA 的一致性看板里：拿 Agent 的调查报告，和人工的独立处理记录对照，这些记录来自和历史案例、Q&amp;A 关联的真实工单。AI 先做逐项对照，可以再经人工确认。证据和结论分两层，各自打 A 完整一致、B 部分一致、C 不一致。Agent 没给结论时单独记为覆盖缺口，不记 C。看板按会话聚合，一个会话多轮追问只算一次，看近 7 天和 14 天的证据一致率趋势。首轮 10 月 9 日的 17 份快照：证据可评 14 个，A 0、B 10、C 4；结论可评 5 个，A 0、B 4、C 1；另有 10 个问题没给结论。这是 AI 初评的小样本，不是全量基线，也不能叫根因准确率。为什么分两层：证据对结论错，问题在推理；证据错结论对，是蒙对的，不能算通过；证据错，问题在工具或手册。这个对应关系是我的归纳。知道错在哪一层之后：证据层的问题，常出在工具，所以下一页看工具好不好用。">
+<header class="hd"><span class="sec">⑥ 度量</span><span class="sep"></span><span class="ttl">结论对不对：证据和结论分开比</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span class="on">度量</span></span></span></header>
+<p class="lead"><span class="qchip r"><i>问题 8</i>结论对不对，没人知道</span>搭好之后，怎么知道对不对：拿报告和人工的独立处理对照，<span style="color:var(--accent)">证据、结论分两层打分</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px">
+  <div class="vs14"><div class="vsc a"><h4>Agent 的调查报告</h4><p>查到的证据 + 结论</p></div><div class="vsb"><span>VS</span></div><div class="vsc b"><h4>人工的独立处理</h4><p>和历史案例 / Q&amp;A 关联的真实处理记录</p></div></div><div class="jd14"><div><b>谁来比</b>AI 先逐项对照，可再经人工确认</div><div><b>怎么打分</b>证据、结论两层分别打：A 完整一致 · B 部分一致 · C 不一致</div><div><b>怎么看</b>一致性看板：按会话统计，看周期趋势</div></div>
+  <div class="two two11">
+    <div class="col2"><h3>证据一致性<em>查到的对不对</em></h3><ul><li>查到的事实和人工确认的事实逐项对照，每项标是否关键</li><li>近 7 / 14 天按 (A+B) / (A+B+C) 看趋势</li></ul></div>
+    <div class="col2 b"><h3>结论一致性<em>判断对不对</em></h3><ul><li>双方都有结论时才对照打分</li><li>Agent 没给结论：单独记为“覆盖缺口”，不算 C</li></ul></div>
+  </div>
+  <div class="claim"><h3>为什么要分两层</h3><p>只比结论，看不出错在哪：证据对、结论错，要改推理规则；证据错、结论对，是蒙对的，不能算通过；证据就错了，要改工具或指导手册</p></div>
+</div>
+</section>
+<section class="slide zp15" data-notes="效果迭代分两类，这一页讲第一类：工具的效果迭代，下一章第 17 页讲第二类：整体的效果迭代。区别在于：工具的效果迭代靠线上真实调用的数据，只管单个工具好不好用；整体的效果迭代靠固定题复跑，管提示词、工具、开关合起来的效果。工具的效果迭代走四步。第一步发现：每次工具调用都留一份记录，包括状态、退出码、耗时、模型等了多久、是否截断、是否转后台，duty-cli 每次调用也记一条事件；IA 的工具效能看板把这些记录按问题排队，有执行错误、结果不完整、持久化或反复补读、重复相同结果、慢调用、查询跑完但为空，同类按受影响的对话数排序。第二步定位：研发点进去能看到参数、结果、模型后续怎么读它，以及原对话，据此判断是工具本身的问题，还是模型传错了参数。第三步修改：改工具的错误提示、参数、合并命令，或者改指导手册里对应的那一条。第四步验证：发版后选中一个工具，按天看调用量、失败和执行前拒绝、错误率、平均和 P90 耗时；上线前可以先用同题复跑验证，改完再回到第一步。一次 7 天抽样的问题分布：查询跑完但为空 154/259，结果预览被截断 915/2203，结果事后又被读文件 816/2561，工具调用成功率 85.6%。这些数字只说明问题分布，不是改进收益；成功率是看板上的状态口径，成功不等于有用，下面的难点一会讲。两个难点：一是成功不等于有用，查空、截断、反复补读在状态码上都是成功；二是归因和闭环，问题出在工具还是模型传参，以及改完之后线上数字有没有变好，目前看板还没有这部分统计，待补。工具好用了，还要查得快，下一页讲耗时怎么拆开看。">
+<header class="hd"><span class="sec">⑥ 度量</span><span class="sep"></span><span class="ttl">工具的效果迭代：线上记录找问题，改完看数字</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span class="on">度量</span></span></span></header>
+<p class="lead"><span class="qchip r"><i>问题 9</i>工具好不好用，看不见</span>迭代分两类：<span style="color:var(--accent)">工具的效果迭代看线上真实调用</span>（这页），整体的效果迭代看固定题复跑（第 17 页）</p>
+<div class="body fill tight bs" style="padding-top:0;gap:7px"><div class="itag t"><b>工具的效果迭代</b><span>线上真实调用驱动，管单个工具好不好用</span></div><div class="it4 t"><div><h4><span>①</span>发现</h4><p><b>每次调用留一条记录</b>：状态、耗时、条数、是否截断、是否转后台</p><p>看板按“问题类型 × 受影响对话数”排队：执行错误、结果不完整、反复补读、重复结果、慢调用、查空</p></div><div><h4><span>②</span>定位</h4><p>点进去看参数、结果、模型后来怎么读它，一路下钻到原对话</p><p>判断：是工具的问题，还是模型传错了参数</p></div><div><h4><span>③</span>修改</h4><p>改工具的错误提示、参数、合并命令</p><p>或改指导手册里对应的那一条</p></div><div><h4><span>④</span>验证</h4><p>发版后按天看调用量、错误率、平均和 P90 耗时</p><p>上线前先同题复跑（第 17 页）；改完回到 ①</p></div></div><div class="subh">一次 7 天抽样里的问题分布（①发现的样子）</div><div class="kp m"><div><b>154 / 259</b><span>查询跑完但结果为空</span></div><div><b>915 / 2203</b><span>结果预览被截断</span></div><div><b>816 / 2561</b><span>结果事后又被读文件</span></div><div><b>85.6%</b><span>工具调用成功率</span></div></div><div class="row c2" style="gap:12px"><div class="claim"><h3>难点一：“成功”不等于有用</h3><p>查空、截断、反复补读，在状态码上都是成功；要按“对调查有没有用”单独定义问题</p></div><div class="claim"><h3>难点二：归因和闭环</h3><p>是工具的问题，还是模型传错了参数？看板能标出问题；改完后线上数字变没变好，还没有统计</p></div></div><div class="foot2">数字来自工具效能看板的一个 7 天窗口，只说明问题分布，不是改进收益。</div></div>
+</section>
+<section class="slide zp16" data-notes="第三件事：耗时要持续降。调查耗时拆成两段：工具调用耗时加探索下钻耗时，两段的目标不同。工具上减步长，最终目的是缩短时长，因为步数少不等于时间短；指标是一个问题分析中，工具的整体执行时长，并发的调用按实际等待算，不是各次相加。做法：开工前程序先把链接、告警、附件取好；一次最多提交 10 条命令并发执行，只算一步；同类指标合成一个批次；多个进程同时查日志时，Key 协调避免抢同一个 Key：每个 Key 一个本机锁文件，文件名是 Key 的摘要，不保存 Key 本身；锁表示正在使用，文件时间表示上次使用；优先选空闲最久的 Key，同一个 Key 两次使用至少隔 1 秒，减少限流。日志查询是异步的：同步最多等 60 秒，没跑完就转后台，模型先推进别的线索。下一次任意工具调用返回时，PostToolUse hook 检查已经结束的后台查询，把结果附在这次工具结果后面：查到几条、空查、部分结果、超时或失败，并给出结果文件路径；每条只提醒一次，一次最多 10 条；它不替 Agent 判断日志含义，也不会阻塞工具结果。现状：每次调用的耗时和模型等待时间已有记录，按问题汇总的整体时长待补；附录 H 是一条真实告警的调用顺序，21 条耗时逐条相加约 53 秒，首报 9.0 分钟。探索上加步长，最终目的是探索得更深、更广；指标用一棵调查树：从入口出发，树有多宽、多深，一个节点就是某服务下的某组件，比如服务 B 的 Kafka 消费、服务 B 的 DB。图上是示意，不是真实案例。指导手册给第一条命令、历史案例当第一个怀疑对象、服务图谱定位下游，帮它一步跳到下一层。现状：树的宽和深还没有统计，待补；每次调用的参数里带着服务和资源，可以考虑据此还原这棵树。线上的三件事讲完了：结论对不对、工具好不好用、快不快。改完怎么知道整体变好了，下一页讲整体的效果迭代：固定题复跑。">
+<header class="hd"><span class="sec">⑥ 度量</span><span class="sep"></span><span class="ttl">越查越快：耗时拆成两段，各有目标和指标</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span class="on">度量</span></span></span></header>
+<p class="lead"><span class="qchip r"><i>问题 10</i>调查太慢</span>再看速度：调查耗时 = 工具调用 + 探索下钻；<span style="color:var(--accent)">工具减步长，看整体执行时长；探索加步长，看调查树的宽和深</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px">
+  <div class="eq">调查耗时 = <span>工具调用耗时</span> + <span class="b">探索下钻耗时</span></div>
+  <div class="two two16">
+    <div class="col2"><h3>工具调用<em>减步长</em></h3><p class="why">目标：<b>缩短时长</b>。步数少不等于时间短，最终看的是时间</p>
+      <div class="metric"><b>指标</b>　一个问题分析中，工具的整体执行时长（并发的调用按实际等待算，不是各次相加）</div>
+      <ul><li>开工前，程序先把链接、告警、附件取好</li><li>一次最多提交 10 条命令并发执行，只算一步；同类指标合成一个批次</li><li>并发查日志不抢 Key：每个 Key 一把文件锁，优先用空闲最久的，同一个 Key 至少隔 1 秒，少触发限流</li><li>日志查询异步：最多等 60 秒，没跑完转后台，模型先推进别的线索</li><li>PostToolUse hook：下一次工具调用返回时，把已结束的后台查询结果补进上下文（查到 N 条 / 空查 / 部分 / 超时 + 结果文件路径）</li></ul>
+      <div class="nowst"><i>现状</i>每次调用的耗时、模型等待时间已有记录；按问题汇总的整体时长待补</div></div>
+    <div class="col2 b"><h3>探索下钻<em>加步长</em></h3><p class="why">目标：<b>探索得更深、更广</b>。用一棵调查树来量</p>
+      <div class="metric"><b>指标</b>　从入口出发，树有多宽、多深；一个节点 = “某服务下的某组件”</div>
+      <svg class="tree" viewBox="0 0 400 118" role="img" aria-label="调查树示意">
+<line x1="200" y1="22" x2="70" y2="58"/><line x1="200" y1="22" x2="200" y2="58"/><line x1="200" y1="22" x2="330" y2="58"/>
+<line x1="200" y1="72" x2="140" y2="100"/><line x1="200" y1="72" x2="262" y2="100"/>
+<rect class="root" x="140" y="6" width="120" height="18" rx="3"/><text class="w" x="200" y="15.5">入口：一条告警</text>
+<rect x="10" y="50" width="120" height="20" rx="3"/><text x="70" y="60.5">服务 A · 对外接口</text>
+<rect x="140" y="50" width="120" height="20" rx="3"/><text x="200" y="60.5">服务 B · Kafka 消费</text>
+<rect x="270" y="50" width="120" height="20" rx="3"/><text x="330" y="60.5">服务 C · 定时任务</text>
+<rect x="80" y="92" width="120" height="20" rx="3"/><text x="140" y="102.5">服务 B · 下游接口</text>
+<rect x="202" y="92" width="120" height="20" rx="3"/><text x="262" y="102.5">服务 B · DB</text>
+<line class="ax" x1="10" y1="44" x2="390" y2="44"/><text class="ax" x="370" y="37">宽度 3</text>
+<line class="ax" x1="394" y1="10" x2="394" y2="112"/><text class="ax" x="364" y="104">深度 2</text>
+</svg>
+      <div class="nowst"><i>现状</i>手册给第一条命令、历史案例当第一个怀疑对象、服务图谱定位下游，帮它一步跳到下一层；树的宽和深还没有统计（待补）</div></div>
+  </div>
+</div>
+</section>
+<section class="slide zp17" data-notes="这一页讲第二类效果迭代：整体的效果迭代。上一类工具的效果迭代，看的是线上真实调用，只管单个工具；工具改得再好，整体不一定变好，因为提示词、工具、开关是一起起作用的。所以改完先在仓库里的离线评测 Stage1 Bench 上对比，代码在 eval/stage1。同样四步。第一步固定：从题库选一道题，固定模型和 600 秒期限；题面从复盘和真人反馈里原样摘录，标准答案只给评分用，被测的 Agent 看不到。第二步只改一处：提示词版本、某个工具或一个开关，一次只改其中一处，跑的时候存下实际加载的提示词和哈希。第三步复跑：每次新建工作区、新开会话，不往真实群里发；Agent 发出的查询会真实执行，另一个 Mock 模型对照历史现场，决定原样保留结果还是复原成事故当时的样子，它不能编造没有来源的结果。第四步比较：耗时、步数、CLI 次数、token 由脚本统计，业务调查和交付门禁由评分模型分开判，不合成综合准确率；好就采纳，不好就不采纳。左下是一次实测：9 月 17 日的短步长实验，同一道题、同一模型 deepseek-flash，四个版本各跑两次。B 关闭 Wiki 预查，两次的回合一次多一次少，方向不一致，不采纳；C 收紧拿到首证就交付的边界，被采纳；D 在 C 上加事实来源检查，耗时更短，但回合回升，两次都要修报告格式，不采纳。A 到 C，工具回合平均 33.5 降到 20.5；交付耗时指跑完并通过报告校验的时间，从 328 秒降到 213 秒。八次的业务调查都只是部分通过，所以这只说明步长变短，不说明结论变准。为什么不靠单元测试：提示词改一句，模型行为怎么变，断言文字测不出来。10 月的一次合并删掉了 12 个断言提示词文字或不稳定的测试模块，理由就是行为交给 Bench 来量。难点：每版只跑两次，只能看方向，不能下显著性结论；题库 24 道题，在仓库里都标着还未准入为真实首报；模型评估只在一台 macOS 本机上跑，没有接进 CI；Bench 用的是 deepseek-flash。10 月 13 日另有一轮 7 道题的 A/B 对比，MR 里只贴了中途结果，这里不展开。度量讲完了。下一页总结十个设计点各自走到了哪一步。">
+<header class="hd"><span class="sec">⑥ 度量</span><span class="sep"></span><span class="ttl">整体的效果迭代：固定题复跑，一次只改一处</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span class="on">度量</span></span></span></header>
+<p class="lead"><span class="qchip r"><i>问题 9</i>工具好不好用，看不见</span><span style="color:var(--accent)">提示词、工具、开关合起来，用固定的题和模型复跑对比</span></p>
+<div class="body fill tight" style="padding-top:0;gap:7px"><div class="itag o"><b>整体的效果迭代</b><span>固定题复跑驱动，管提示词、工具、开关合起来好不好</span></div><div class="it4 o"><div><h4><span>①</span>固定</h4><p>选一道题，固定模型和 600 秒期限</p><p>题面从复盘、真人反馈原样摘录；答案只给评分用</p></div><div><h4><span>②</span>只改一处</h4><p>提示词版本、某个工具或一个开关，只改其中一处</p><p>记下实际加载的提示词和哈希</p></div><div><h4><span>③</span>复跑</h4><p>新工作区、新会话；查询真实执行</p><p>Mock 对照历史现场，原样保留或复原；不发真实群</p></div><div><h4><span>④</span>比较</h4><p>脚本统计耗时、步数；评分卡业务调查、交付分开判</p><p>好就采纳，不好就不采纳</p></div></div><div class="b17g"><div class="b17l"><div class="subh" style="margin-top:0">一次实测：同一道题、同一模型，四个版本各跑两次（2026-09-17）</div><table class="b17t grow"><thead><tr><th style="width:52px">版本</th><th>只改了什么</th><th class="c" style="width:74px">工具回合</th><th class="c" style="width:118px">交付耗时（秒）</th><th style="width:176px">结论</th></tr></thead><tbody><tr><td><b>A</b></td><td>基线</td><td class="c">31 · 36</td><td class="c">285 · 372</td><td>对照</td></tr><tr><td><b>B</b></td><td>关闭 Wiki 预查</td><td class="c">42 · 28</td><td class="c">318 · 251</td><td>不采纳：两次方向相反</td></tr><tr class="win"><td><b>C</b></td><td>收紧“拿到首证就交付”的边界</td><td class="c">25 · 16</td><td class="c">259 · 167</td><td><b style="color:var(--accent)">采纳</b></td></tr><tr><td><b>D</b></td><td>在 C 上加事实来源检查</td><td class="c">32 · 22</td><td class="c">210 · 138</td><td>不采纳：回合回升，要修报告</td></tr></tbody></table><div class="b17s">A → C：工具回合平均 <b>33.5 → 20.5（−39%）</b>，交付耗时 <b>328 → 213 秒（−35%）</b>；八次的业务调查都只是“部分通过”</div></div><div class="b17r"><div class="claim"><h3>为什么不靠单元测试</h3><p>提示词改一句，行为怎么变，断言文字测不出来。断言提示词文字的测试已经删掉，行为交给复跑来量</p></div><div class="claim"><h3>难点：样本少，题还不够真</h3><p>每版只跑两次，只能看方向；24 道题都还未准入为真实首报；只在一台机器上跑，模型是 deepseek-flash</p></div></div></div></div>
+</section>
+<section class="slide" data-notes="收口一页，把十个设计点按成熟度排开。靠程序保证、已经稳定的：落库确认和发件箱，材料分层和程序预取、工具标明没查到什么，只读和白名单。有了但还靠模型自觉或阈值的：把不知道写进结论，开口判断，分层记忆与经验。刚起步的：两层一致性对照只有首轮小样本，工具飞轮还没统计线上改进前后，离线有同题复跑但样本小，耗时两段的指标待建。规律：越靠程序的越稳，越靠模型自觉的，越需要度量来证明。最后一句：Agent 是会出错的模型加外面一圈程序，可靠靠这圈程序，变好靠度量。下一步：先补评测和线上数据；评估 JEV 阈值；能用程序检查的规则，从提示词挪到程序里。">
+<header class="hd"><span class="sec">总结</span><span class="sep"></span><span class="ttl">十个设计点，各自走到了哪一步</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead">回到第 2 页那条 P0：十个问题里，越靠程序的越稳；<span style="color:var(--accent)">越靠模型自觉的，越需要度量来证明</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px"><table class="grow mat"><thead><tr><th style="width:300px">设计点</th><th style="width:140px">主要靠</th><th>还缺什么</th><th class="c" style="width:56px">页</th></tr></thead><tbody><tr class="grp"><td colspan="4">靠程序保证，已经稳定</td></tr><tr><td><b><span class="qnum">1</span>落库确认、发件箱投递</b></td><td><span class="lay m">系统流程</span></td><td>机投和群聊仍是两套提示词和工作区</td><td class="pgn">4</td></tr><tr><td><b><span class="qnum">2</span>材料分层、程序预取</b></td><td><span class="lay m">系统流程</span> <span class="lay h">规则拦截</span></td><td>—</td><td class="pgn">5–6</td></tr><tr><td><b><span class="qnum">6</span>只读、指定工具、资料里的命令不执行</b></td><td><span class="lay h">规则拦截</span> <span class="lay m">系统流程</span></td><td>不是操作系统级隔离</td><td class="pgn">12</td></tr><tr class="grp"><td colspan="4">有了，但还靠模型自觉或阈值</td></tr><tr><td><b><span class="qnum">3</span>看清问题：判类型、找对象</b></td><td><span class="lay j">JEV</span> <span class="lay p">模型自觉</span></td><td>群聊不判类型；意图判对没有还没度量</td><td class="pgn">7–8</td></tr><tr><td><b><span class="qnum">4</span>工具标明没查到什么；“不知道”写进结论</b></td><td><span class="lay m">系统流程</span> <span class="lay p">模型自觉</span></td><td>没有程序检查结论有没有说过头；工具效果刚开始统计</td><td class="pgn">9–10</td></tr><tr><td><b><span class="qnum">5</span>开口判断</b></td><td><span class="lay j">JEV</span> <span class="lay m">系统流程</span></td><td>“有没有实锤”由模型自己标；阈值没评估过</td><td class="pgn">11</td></tr><tr><td><b><span class="qnum">7</span>三种积累：群记忆、闭环经验、历史归档</b></td><td><span class="lay m">系统流程</span> <span class="lay p">模型自觉</span></td><td>群记忆没人审核；经验靠关键词匹配</td><td class="pgn">13</td></tr><tr class="grp"><td colspan="4">刚起步</td></tr><tr><td><b><span class="qnum r">8</span>证据、结论两层对照</b></td><td>IA 一致性看板</td><td>只有首轮小样本</td><td class="pgn">14</td></tr><tr><td><b><span class="qnum r">9</span>工具与整体的效果迭代</b></td><td>工具效能看板 · 复跑</td><td>线上改进没统计；复跑每版只跑两次，题未准入为真实首报</td><td class="pgn">15、17</td></tr><tr><td><b><span class="qnum r">10</span>耗时两段指标</b></td><td>调用记录</td><td>整体执行时长和调查树都待建</td><td class="pgn">16</td></tr></tbody></table>
+  <div class="gold" style="font-size:17px">回到第 3 页那句话：可靠靠这圈程序，变好靠度量</div>
+</div>
+</section>
+<section class="slide" id="s19" data-notes="最后一页讲后续研发的两个方向。方向一是主动型能力：现在 DoD 只调查、不改动，下一步是在感知到这几类问题时直接出手。一是必现 bug，基于报错点把问题投递到 E2E 代码开发平台去修；二是版本发布、配置、中间件变更导致的问题，给出回归语句和配置，@负责人执行；三是容器类问题，提供扩缩容和重启能力，@负责人执行。注意现状：只读、只调查（第 12 页），duty-cli 没有 Pod 状态入口，也不授权重启；所以前提是“有实锤”这个标签先能被复核，不然动作就建立在模型自己的判断上。方向二是持续学习，对照业界说的四种能力看我们现在到哪了：经验留存，部分已有，三种积累、长短期分目录、确认后才入库，但提炼靠人、匹配靠关键词、只有群聊在用；自我反思与纠错，外环有、内环没有，一致性看板、工具效能看板、固定题复跑都是给人看的，不会自动回流成经验；防遗忘与冲突消解，基本没有，只有最近 30 天最多 50 条的窗口；自主探索与技能合成，没有，工具和指导手册都是人写人发版。两个方向有同一个前提：结论和经验要先能被复核，再谈自动。以上缺口和做法是建议，不是已排期的计划。">
+<header class="hd"><span class="sec">展望</span><span class="sep"></span><span class="ttl">后续研发的两个方向：能出手，会学习</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead">现在的 DoD 只调查、不改动；<span style="color:var(--accent)">两个方向都建立在同一个前提上：结论和经验先能被复核，再谈自动</span></p>
+<div class="body fill tight bs" style="padding-top:0">
+  <div class="nx">
+    <div class="nxl"><div class="nxh"><b>方向一 · 主动型能力</b><em>从“只调查”到“能出手”</em></div>
+      <div class="nxt"><span>感知到问题由</span><b>必现 bug</b><b>版本发布变更</b><b>配置变更</b><b>中间件变更</b><span>导致时</span></div>
+      <div class="nxa"><i>必现 bug</i><p>基于报错点，把问题<b>投递到 E2E 代码开发平台</b>，自动修复</p></div>
+      <div class="nxa"><i>变更类</i><p>提供<b>回归语句、配置</b>，@负责人执行</p></div>
+      <div class="nxa"><i>容器类</i><p>提供<b>扩缩容、重启</b>能力，@负责人执行</p></div>
+      <div class="nxs"><b>现状</b>只读、只调查，不改动（第 12 页）；duty-cli 没有 Pod 状态入口，也不授权重启。<b>前提</b>：“有实锤”标签先可复核，动作才不会建立在模型自己的判断上</div>
+    </div>
+    <div class="nxr"><div class="nxh"><b>方向二 · 持续学习</b><em>对照四种能力，现在到哪了</em></div>
+      <div class="nxc"><div class="nxn"><h4>经验留存</h4><span class="st2 p">部分已有</span></div><p><u>已有</u>三种积累；线程、个人、群根分短期和长期；确认后才入库（第 13 页）</p><p><u class="g">还缺</u>调查轨迹自动提炼成结构化经验或规则（现在靠人）；经验靠关键词匹配；只有群聊在用</p></div>
+      <div class="nxc"><div class="nxn"><h4>自我反思与纠错</h4><span class="st2 p">外环有，内环没有</span></div><p><u>已有</u>一致性看板（对照人工结论）、工具效能看板、固定题复跑，都是给人看的（第 14–17 页）</p><p><u class="g">还缺</u>把人工纠正、一致性 C 档自动回流成候选经验；不靠人改提示词，就能调整后续策略</p></div>
+      <div class="nxc"><div class="nxn"><h4>防遗忘与冲突消解</h4><span class="st2 n">基本没有</span></div><p><u>已有</u>开工只带最近 30 天、最多 50 条经验；确认过才入库；历史归档标注“不作当前事实”</p><p><u class="g">还缺</u>经验带来源、时间、适用范围；新旧冲突检测；过期淘汰；群记忆审核</p></div>
+      <div class="nxc"><div class="nxn"><h4>自主探索与技能合成</h4><span class="st2 n">没有</span></div><p><u>已有</u>duty-cli 23 项能力、12 篇指导手册，都是人写、人发版</p><p><u class="g">还缺</u>从高频调查路径提炼候选命令或手册；复跑验证后才上线；不让 Agent 直接改工具</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="slide" data-notes="附录，供追问时查阅。正文第 4 到 16 页的设计逐一对应到 oncall/ 下的代码，并标出靠哪种保证：模型自觉对应提示词和 JEV；规则拦截对应 Harness；系统流程对应 Runtime。请求链路见第 4 页。">
+<header class="hd"><span class="sec">附录 A</span><span class="sep"></span><span class="ttl">设计落在哪：代码位置</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span></span></span></header>
+<p class="lead"><span class="from">对应第 4–17 页 · 全部设计点｜</span>正文每个设计对应的代码，<span style="color:var(--accent)">以及它靠哪种保证</span></p>
+<div class="body tight" style="padding-top:0;gap:6px"><table class="apa" style="font-size:9.8px"><tr><th style="width:48px">步骤</th><th style="width:104px">设计</th><th>代码位置（oncall/ 下）</th><th class="c" style="width:150px">靠什么保证</th><th style="width:240px">说明</th></tr><tr><td>开工</td><td><b>会话地图</b></td><td><code>session_context</code> · <code>workspace_map</code> · <code>指导手册</code></td><td class="c"><span class="lay m">系统流程</span></td><td>线程首次生成 context.md，接在系统提示词后</td></tr><tr><td>开工</td><td><b>问题材料预取</b></td><td><code>context_fetch</code> · <code>context_assets</code> · <code>spreadsheet</code></td><td class="c"><span class="lay m">系统流程</span></td><td>开工前取 Jira、告警、附件；表格转 CSV</td></tr><tr><td>开工</td><td><b>常驻执行</b></td><td><code>executor.py</code> + HAPI</td><td class="c"><span class="lay m">系统流程</span></td><td>每线程一个 Claude Code 会话，追问排队</td></tr><tr><td>查</td><td><b>七步方法</b></td><td>主提示词 + 指导手册包（v132），见附录 B</td><td class="c"><span class="lay p">模型自觉</span></td><td>靠模型遵守</td></tr><tr><td>查</td><td><b>取证工具</b></td><td>只读 evidence MCP（包装 duty-cli）</td><td class="c"><span class="lay h">规则拦截</span></td><td>MCP 白名单 + 参数校验</td></tr><tr><td>判</td><td><b>证据标准</b></td><td>主提示词 · brief 写作说明</td><td class="c"><span class="lay p">模型自觉</span></td><td>靠模型遵守；工具截断标记提供客观信号</td></tr><tr><td>说</td><td><b>接话 / 进度判断</b></td><td><code>followup.py</code> · <code>milestones.py</code></td><td class="c"><span class="lay j">JEV</span> <span class="lay m">系统流程</span></td><td>JEV 判价值；程序管阈值、去重、配置版本</td></tr><tr><td>说</td><td><b>流式摘要</b></td><td><code>stream_brief.py</code></td><td class="c"><span class="lay m">系统流程</span></td><td>解析主 Agent 的 Write 参数</td></tr><tr><td>说</td><td><b>标签门禁</b></td><td><code>validation.classify</code> · <code>publisher</code></td><td class="c"><span class="lay p">模型自觉</span> <span class="lay m">系统流程</span></td><td>模型写标签，程序路由投递</td></tr><tr><td>兜底</td><td><b>权限边界</b></td><td><code>tool_guard</code> · policy.json · hooks</td><td class="c"><span class="lay h">规则拦截</span></td><td>程序强制，非 OS 沙箱</td></tr><tr><td>兜底</td><td><b>群配置</b></td><td><code>group_config.py</code> + 写入 Hook</td><td class="c"><span class="lay h">规则拦截</span></td><td>schema 校验，不含权限</td></tr><tr><td>兜底</td><td><b>隔离</b></td><td><code>group_workspace.py</code></td><td class="c"><span class="lay m">系统流程</span></td><td>工作区归属与前缀冲突拦截</td></tr><tr><td>积累</td><td><b>群记忆</b></td><td>Claude 原生记忆 · 群根 <code>memory/</code></td><td class="c"><span class="lay p">模型自觉</span></td><td>Agent 自己写，没有复核；群聊开工自动加载</td></tr><tr><td>积累</td><td><b>闭环经验</b></td><td><code>lessons.py</code> · 群根 <code>lessons/</code></td><td class="c"><span class="lay m">系统流程</span></td><td>只同步已闭环条目；按表象索引匹配</td></tr><tr><td>度量</td><td><b>同题复跑</b></td><td>仓库根 <code>eval/stage1/</code>（不在 oncall/ 下）</td><td class="c"><span class="lay m">系统流程</span></td><td>固定题和模型复跑；Mock 复原现场；两张评分卡</td></tr></table></div>
+</section>
+<section class="slide" data-notes="附录 B，供追问：系统提示词的设计。它来自版本包里的 system_prompt_base.md，会话启动时快照，之后不变；不同渠道取用不同的提示词。机投用 system_prompt_base.md：程序在“output/brief.md”这一节的标记处把它切成两半，前半部分（调查方法、证据标准、工具使用）作为系统提示词，后半部分（结论怎么写成 brief 的写作规范）不放进系统提示词，而是随每次机投请求放在用户输入里。群聊不用这份，用单独的、更短的群聊提示词，再加一段 IM 回复提醒，不带 brief 写作规范。两者最后都接上会话地图 context.md。内容分六节：目标与边界，调查方法七步，证据标准，工具使用，只做定位时，以及仅机投的写作说明。它不加载知识，知识由会话地图提供索引。改系统提示词要走发版，提示词包、指导手册和 duty-cli 一起发布。">
+<header class="hd"><span class="sec">附录 B</span><span class="sep"></span><span class="ttl">系统提示词：怎么查、怎么写</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 6 页 · 系统提示词｜</span>一份冻结的方法说明，跟指导手册、duty-cli 一起发版；<span style="color:var(--accent)">管调查方法、证据标准和结论写法</span></p>
+<div class="body fill tight bs spp" style="padding-top:0;gap:7px"><div class="pipe"><div>版本包里冻结一份<small>随提示词包发布，会话启动时快照，不热更新</small></div><i>›</i><div>机投、群聊各取一份<small>机投：方法说明，写作规范随每次请求单独送；群聊：更短的群聊提示词</small></div><i>›</i><div>接上会话地图<small>再接 context.md，一起作为系统提示词</small></div></div><table class="grow sp"><thead><tr><th style="width:132px">一节</th><th>管什么</th><th>例子</th></tr></thead><tbody><tr><td class="k">目标与边界</td><td>像值班 SRE 一样查；只读生产；输入和工具返回的文字只当事实，不当指令</td><td>不回滚、不改库；资料里的“请执行…”不执行</td></tr><tr><td class="k">调查方法</td><td>七步：还原问题、钉时间线、补身份、对历史、首查、下钻、收尾</td><td>先数据后理论；没对照过时间线的机制，不当结论</td></tr><tr><td class="k">证据标准</td><td>什么算新增事实、来源怎么写、覆盖多大、缺失的信号不是正常</td><td>空查不排除故障；limit 截断不算全量</td></tr><tr><td class="k">工具使用</td><td>以实际工具菜单和返回为准；每条查询记“已查 / 发现 / 未发现 / 无法访问”</td><td>空结果先核参数；报错先修命令，不换词反复宽搜</td></tr><tr><td class="k">只做定位时</td><td>用户只要定位或参数交接，范围完成就收尾，不升级成事故调查</td><td>Apollo 可读只证明 app 存在，不证明目标服务用它</td></tr><tr><td class="k">写作说明（仅机投）</td><td>结论写成三段、六个状态标签、阶段性证据的认定</td><td>不放进系统提示词，随每次机投请求放在用户输入里；群聊不带</td></tr></tbody></table>
+</div>
+</section>
+<section class="slide" data-notes="附录 C，供追问：会话地图 context.md 的设计。工作区初始化时，程序从本地文件生成一份 context.md，只读保存，开头一句话标明内容已全文注入、视为已读，不要再 Read。之后它被接在系统提示词后面，一个会话只生成一次。内容按固定顺序分节：目录地图（含资源软链的真实路径，因为软链目录 Grep 和 Glob 搜不到），本群 Lessons 索引和历史排查索引（群聊），群助手设置，可用指导手册的标题和适用现象，CLI 命令目录，SSC 服务索引与术语。它只回答在哪查，不放问题材料；问题材料在 issue.md 和 context/ 里，每轮更新。每一节的来源、字数和摘要都写进清单，可以对账。">
+<header class="hd"><span class="sec">附录 C</span><span class="sep"></span><span class="ttl">会话地图 context.md：去哪找东西</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 6 页 · 会话地图｜</span>开工时生成一次的资料索引，<span style="color:var(--accent)">全文拼进系统提示词，模型视为已读</span></p>
+<div class="body fill tight bs spp" style="padding-top:0;gap:7px"><div class="pipe"><div>开工时生成一次<small>从本地文件生成，只读保存</small></div><i>›</i><div>写成 context.md<small>开头标明“已读，不要再 Read”</small></div><i>›</i><div>拼进系统提示词<small>全文注入，视同已读</small></div></div><table class="grow sp"><thead><tr><th style="width:132px">一节</th><th>放什么</th><th>为什么放这里</th></tr></thead><tbody><tr><td class="k">目录地图</td><td>工作区里有哪些文件和目录、哪些只读、哪些可写；资源软链的真实路径</td><td>软链目录 Grep / Glob 搜不到，要给真址<small>并写明：禁止对 kb、sop 整树 Grep</small></td></tr><tr><td class="k">本群 Lessons</td><td>最近 30 天、最多 50 条已闭环经验的索引（群聊）</td><td>正文留在群根，不复制进线程</td></tr><tr><td class="k">本群历史排查索引</td><td>一次性归档的历史对话索引（群聊，有归档才有）</td><td>冷启动参考，大多不具备指导意见</td></tr><tr><td class="k">群助手设置</td><td>本群配置文件位置，以及怎么改接话、进展通知、Bash 开关、API 回调</td><td>用户要求调整时，模型知道去哪改</td></tr><tr><td class="k">可用指导手册</td><td>每篇指导手册的标题和适用现象</td><td>模型先看目录，再按现象读哪一篇</td></tr><tr><td class="k">CLI 命令目录</td><td>可用的命令和参数语法</td><td>语法不靠猜；缺语法再查帮助</td></tr><tr><td class="k">SSC 服务索引与术语</td><td>服务索引和系统别名表全文</td><td>理解业务名称和填参；<small>不证明当前服务、市场或故障归属</small></td></tr></tbody></table>
+  <div class="row c2 spc" style="gap:12px">
+    <div class="claim"><h3>只放“在哪查”，不放问题材料</h3><p>问题材料在 issue.md 和 context/，每轮更新；它一个会话只生成一份</p></div>
+    <div class="claim"><h3>只给地图，正文按需读</h3><p>服务索引和术语表常驻；其余知识只给入口</p></div>
+  </div>
+</div>
+</section>
+<section class="slide fit" data-notes="附录 D，供追问。常驻部分写进 context.md：ssc-service-index.md 和 ssc-system-alias.md 全文，以及资源卡片、指导手册头部、CLI 目录、本群 lessons 索引。正文以软链只读挂在线程的 resources/ 下：kb 按业务线分目录带 SDU mapping；knowledge 有 NAVIGATION.md 和 index.jsonl；sre-指导手册有履约创建与状态推进、Place Order、LFS ABO、AWB/TN、WMS 波次等核心链路参考；sop、repository 加仓库索引和源码版本观察、lessons 经验卡。禁止对 kb、sop 整树 Grep；服务索引不证明当前服务、市场或故障归属；源码版本不等于部署版本。">
+<header class="hd"><span class="sec">附录 D</span><span class="sep"></span><span class="ttl">SSC 知识：常驻什么，按需读什么</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 6 页 · 会话地图里的知识｜</span>常驻的只有索引和地图，<span style="color:var(--accent)">正文挂在工作区里按需读</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px">
+  <div class="row" style="grid-template-columns:1fr 1.5fr;gap:12px;align-items:start">
+    <div class="pt"><div class="subh" style="margin-top:0">常驻的只有索引和地图</div><div class="card hl"><h3>常驻：写进会话地图</h3><ul><li>SSC 服务索引、系统别名与术语表（全文）</li><li>资料目录和读取入口</li><li>指导手册目录、命令目录</li><li>本群经验索引</li></ul></div></div>
+    <div class="pt"><div class="subh" style="margin-top:0">正文挂在工作区里，按需读</div><table class="grow "><thead><tr><th style="width:170px">按需读：只读挂载</th><th>用来做什么</th></tr></thead><tbody><tr><td><b>业务线知识库 + SDU 映射</b></td><td>把业务名翻成服务和查询参数</td></tr><tr><td><b>SSC 知识正文</b></td><td>通过导航和实体索引，找到仓库、接口、任务和职责</td></tr><tr><td><b>核心链路排查参考</b></td><td>履约创建、下单、运单号、仓内波次等链路的职责和交接</td></tr><tr><td><b>处理手册（SOP）</b></td><td>问题明确后，再选对应领域</td></tr><tr><td><b>代码仓库</b></td><td>按索引定位单个仓库，查条件和参数</td></tr><tr><td><b>历史经验卡</b></td><td>当作第一个怀疑对象</td></tr></tbody></table></div>
+  </div>
+  <div class="row c3" style="gap:10px">
+    <div class="claim"><h3>先看地图，再读正文</h3><p>定位到业务线再读相关文件，不整库搜索</p></div>
+    <div class="claim"><h3>知识是线索，不是证据</h3><p>服务索引不能证明这次是哪个服务、哪个市场出了问题</p></div>
+    <div class="claim"><h3>代码版本要核对</h3><p>仓库里的代码不一定等于线上正在跑的版本</p></div>
+  </div>
+</div>
+</section>
+<section class="slide" data-notes="附录 E，供追问：四种来源在入口和开工前各做了什么。机投包括正式 P0、NOC、Live Issue。正式 P0 在入口做语义去重，开工前提取告警字段、分析规则、按规则原式查时序，类型直接判为告警。NOC 回调带告警触发时间，10 月起每条都受理、不去重，报告另抄送到 Jira 匹配的群；报文是结构化告警时，走和 P0 一样的告警分析。NOC 报文是否都是结构化告警，我没有核实。Live Issue 以 Jira 单进入，自动同步投递并防重复，开工前抓 Jira 正文和关联单。群聊在入口拼上线程历史、引用消息和转发记录，开工前分析线程里的告警卡片、下载图片和文件。观点：补全看输入里有什么，不看渠道名。问题材料的处理细节并入本页：图片和 PDF 下载并校验格式，Excel 每个 sheet 转成 CSV，下载失败记为缺口；首轮一次给到，问题原文最多 8000 字、全部预读最多 16000 字；模型拿不到抓取凭据，取不到的明写未取得；追问只补新消息和新附件，不重复塞整份材料。">
+<header class="hd"><span class="sec">附录 E</span><span class="sep"></span><span class="ttl">补全问题：四种来源怎么补</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 6–7 页 · 问题材料与补全｜</span>三种机投加群聊：<span style="color:var(--accent)">入口先整理，开工前再按输入内容补全</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px"><table class="grow src"><thead><tr><th style="width:96px">来源</th><th>入口（mcp-server）先做</th><th>开工前（Runtime）再做</th><th style="width:118px">判类型</th></tr></thead><tbody><tr><td class="k"><b>正式 P0</b><small>机投</small></td><td>同一问题做语义去重</td><td>提取告警字段（规则 ID、部署、事件时间、labels）写成字段索引；分析告警规则；按规则原式查事件前 60 分钟到后 30 分钟的时序</td><td>直接判为告警，不调 JEV</td></tr><tr><td class="k"><b>NOC</b><small>机投</small></td><td>回调带告警触发时间；不去重，每条都受理；报告另抄送到 Jira 匹配的群</td><td>报文是结构化告警时，走和 P0 一样的告警分析与规则时序；带 Jira 链接时抓正文</td><td>JEV 判</td></tr><tr><td class="k"><b>Live Issue</b><small>机投</small></td><td>以 Jira 单进入，自动同步投递；原子抢占，防止同一张单重复投递；做语义去重</td><td>抓 Jira 正文，顺着关联单最多 3 层、16 篇；下载附件</td><td>JEV 判，参考 Jira 的摘要、描述等字段</td></tr><tr><td class="k"><b>群聊</b><small>@ 机器人</small></td><td>拼上线程历史；解析引用的消息（先找本线程，再查最多 3 页群历史）；展开转发的聊天记录（最多 3 层，每层 200 条）；图片和文件保留链接</td><td>抓链接和裸 Jira 编号；线程里的告警卡片最多分析 3 个；下载图片和文件，xlsx 转 CSV；追问只补新附件</td><td>不判，由模型读题决定</td></tr><tr><td class="k"><b>附件</b><small>所有来源</small></td><td colspan="2">图片、PDF 下载并校验格式；Excel 每个 sheet 转成 CSV，限制大小和行列；下载失败记为缺口，写明“未取得”</td><td>—</td></tr></tbody></table>
+  <div class="foot2">补全看输入里有什么，不看渠道名；渠道的差别在入口：去重、上下文怎么拼、结果发到哪。上限：链接 16 篇；附件单个 8 MB、合计 32 MB、最多 16 个；首轮 16000 字，问题原文 8000 字；模型拿不到抓取凭据；追问只补新附件。</div></div>
+</section>
+<section class="slide zp24" data-notes="附录 F，供追问：指导手册的组织方式、两个使用入口和 duty-cli 的四个设计思路。">
+<header class="hd"><span class="sec">附录 F</span><span class="sep"></span><span class="ttl">duty-cli：入口与设计思路</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 9 页 · duty-cli 入口｜</span>指导手册是操作手册，<span style="color:var(--accent)">duty-cli 是人和 Agent 共用的只读取证工具</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:6px">
+  
+  
+  <div class="row" style="grid-template-columns:1fr 1.25fr;gap:12px;align-items:start">
+    <div class="card"><h3>指导手册：给模型的操作手册</h3><ul><li>按现象和组件分 12 篇：请求链路、指标异常、Kafka、缓存、数据库、变更、业务规则等</li><li>每篇先写常用查询和什么时候停；有异常或缺口才读“深入”</li><li>和 duty-cli 一起发版（如 CLI 1.0.34 配 guides-v133），手册里写的命令一定能跑</li></ul></div>
+    <div class="pt"><div class="subh" style="margin-top:0">两个使用入口</div><table class="grow "><thead><tr><th style="width:84px">谁在用</th><th style="width:150px">入口</th><th>能做什么</th></tr></thead><tbody><tr><td><b>Agent</b></td><td>服务端版，经只读取证通道</td><td>全部能力；每批 1–10 条，每次调查最多 100 步，结果都留档</td></tr><tr><td><b>值班同学</b></td><td>用户版命令行 / Codex 插件</td><td>本地查指标；敏感查询经服务端转发，需带个人身份</td></tr></tbody></table></div>
+  </div>
+  <div class="subh">duty-cli 的四个设计思路</div>
+  <div class="row c4" style="gap:8px">
+    <div class="claim"><h3>人和 Agent 共用</h3><p>散在各 skill 里的查询统一成一个命令行，人能用同一条命令复核 Agent 查过的东西</p></div>
+    <div class="claim"><h3>敏感凭据只在服务端</h3><p>指标在本地直接查；日志、数据库、变更、Jira 这类要敏感凭据的，交给服务端代查</p></div>
+    <div class="claim"><h3>“不知道”被标出来</h3><p>统一输出结构化结果，区分有数据、值为零、没上报、查询失败，并写明是否截断</p></div>
+    <div class="claim"><h3>每次调用都留记录</h3><p>记下调了哪个系统、耗时多久，结果是成功、业务异常还是技术错误</p></div>
+  </div>
+</div>
+</section>
+<section class="slide fit" data-notes="附录 G，供追问：服务端版 1.0.33 的 23 项能力逐项展开。指标类 11 项：pod、host、alb、cache、db、kafka、zookeeper、es、uss、isomer、prometheus-query；服务身份 3 项：xsre、service-topology、service-graph；变更 2 项：change、apollo；现场证据 7 项：log、alert、saturn、data、jira、confluence、git。1.0.33 发布清单共 24 项，本页展开其中 23 项；子命令只列主要的，完整以 duty-cli help 为准。覆盖范围与使用数据并入本页：约 485 个监控面板，其中 Kafka 117、Cache 106、ALB 88、ES 55、Saturn 37、Pod 31、ZooKeeper 21、USS 19、Isomer 6、ISP 5，数据库面板另计；4 类变更；12 篇指导手册。每次调用都有记录，使用数据待补：各能力调用次数与占比、成功、业务异常、技术错误的比例、空结果比例、平均耗时。">
+<header class="hd"><span class="sec">附录 G</span><span class="sep"></span><span class="ttl">duty-cli：23 项能力与使用数据</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 9 页 · duty-cli 能力｜</span>23 项分四类：<span style="color:var(--accent)">指标 11 项，其余 12 项管身份、变更和现场证据</span></p>
+<div class="body tight" style="padding-top:0;gap:8px"><div class="cap2"><table class="L"><tr><th>指标类（11）</th><th>查什么</th></tr><tr><td class="n">pod</td><td>容器 CPU、内存、请求、延迟、运行时（GC、goroutine、OOM、重启）</td></tr><tr><td class="n">host</td><td>宿主机指标</td></tr><tr><td class="n">alb</td><td>ALB 指标，可按域名查</td></tr><tr><td class="n">cache</td><td>Cache 指标（资源经 xsre 找）</td></tr><tr><td class="n">db</td><td>DB 运行指标：读写 QPS、错误、复制延迟、CPU</td></tr><tr><td class="n">kafka</td><td>Kafka 消费 lag、生产和消费速率</td></tr><tr><td class="n">zookeeper</td><td>ZooKeeper 指标</td></tr><tr><td class="n">es</td><td>Elasticsearch 指标，如查询延迟</td></tr><tr><td class="n">uss</td><td>USS 应用维度指标</td></tr><tr><td class="n">isomer</td><td>Isomer index 链路和集群指标</td></tr><tr><td class="n">prometheus-query</td><td>直接按面板或 PromQL 查 Prometheus / Grafana</td></tr></table><table><tr><th>类别</th><th>能力</th><th>做什么</th><th>主要子命令</th></tr><tr><td class="g" rowspan="3">服务身份</td><td class="n">xsre</td><td>SDU 关联的基础资源</td><td class="s">get-related-resources-by-sdu · list-resources</td></tr><tr><td class="n">service-topology</td><td>服务拓扑与 CMDB / SDU 映射</td><td class="s">topology · by-cmdb</td></tr><tr><td class="n">service-graph</td><td>CMDB / SDU / Repo / DB 统一图谱</td><td class="s">show · search · list · explain</td></tr><tr><td class="g" rowspan="2">变更</td><td class="n">change</td><td>发布、业务、数据库变更</td><td class="s">release · apollo · db · business</td></tr><tr><td class="n">apollo</td><td>查 Apollo 配置</td><td class="s">value · keys · compare · search · discover</td></tr><tr><td class="g" rowspan="7">现场证据</td><td class="n">log</td><td>查服务日志</td><td class="s">search · parse-url · panic</td></tr><tr><td class="n">alert</td><td>分析监控告警</td><td class="s">analyze · history</td></tr><tr><td class="n">saturn</td><td>Saturn 任务与运行指标</td><td class="s">jobs · executors · metrics</td></tr><tr><td class="n">data</td><td>Data.SSC 只读查库</td><td class="s">search-databases · get-tables · get-table-schema · query-table</td></tr><tr><td class="n">jira</td><td>查 Jira issue</td><td class="s">fetch · search · comment</td></tr><tr><td class="n">confluence</td><td>只读查 Confluence</td><td class="s">search · get</td></tr><tr><td class="n">git</td><td>只读查代码历史</td><td class="s">log · show · diff · blame · mr</td></tr></table></div><div class="quote" style="padding:4px 10px;font-size:11.5px;line-height:1.5"><b>范围</b>　≈485 个监控面板（isp 代码里已有，未随 1.0.33 发布）· 4 类变更 · 12 篇指导手册　<b>使用数据（待补）</b>　调用次数与占比；成功 / 异常比例；空结果比例；平均耗时</div>
+</div>
+</section>
+<section class="slide" data-notes="附录 H，对应第 9 页：一条真实 live 告警的工具调用顺序，来自 IA 的工具调用页，页面注明展示的是数据库快照，状态可能滞后。告警是 FBS task 对外 HTTP 错误率的 P0 分析，执行完成，首报 9.0 分钟。截图里能看到 21 条调用，按顺序分四段：第 1–2 条 alert analyze 复核告警；第 3–4 条 service-graph search 找候选、show 取服务身份；第 5–15 条沿 CAT 链路（deps、overview、code、span、callers）和日志（log search）往下钻，两条日志查询是 partial；第 16–21 条补查原面板（panel-query 失败）、库表（tables、get-table-schema，最后一次 query-table 失败）。三点观察：一是前四步正是第 9 页讲的路径，先复核告警、再定位服务；这 21 条里没有 entity-pick，先按告警里的指标和规则复核，就是第 8 页的入口一；下钻到日志、库表缺服务身份时，再用入口三补，服务身份来自 search 加 show。二是没查到的被标了出来：partial 两条，failed 两条。三是 21 条的耗时逐条相加约 53 秒，而首报用了 9.0 分钟，工具执行不是主要耗时；注意这是逐条相加，并发的调用没有扣除，截图也可能没有包含全部调用，所以只是粗略比较。">
+<header class="hd"><span class="sec">附录 H</span><span class="sep"></span><span class="ttl">一次真实告警的工具调用顺序</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 9 页｜</span>一条 P0 告警的 21 条调用，<span style="color:var(--accent)">前四步就是“复核告警，再定位服务”</span></p>
+<div class="body fill tight" style="padding-top:0;gap:5px"><div class="exl"><b>示例线</b>真实 live P0 告警：FBS task 对外 HTTP 错误率，首报 9.0 分钟；下表是 IA“工具调用”页的调用顺序</div><div class="lg9"><span class="phA">复核告警 1–2</span><span class="phB">定位服务 3–4</span><span class="phC">下钻：CAT 链路和日志 5–15</span><span class="phD">补查：原面板和库表 16–21</span></div><div class="g9i"><table class="grow ct"><thead><tr><th style="width:30px">#</th><th>工具</th><th class="c" style="width:78px">耗时</th><th class="c" style="width:64px">状态</th></tr></thead><tbody><tr class="phA"><td class="n">1</td><td><code>duty-cli alert analyze</code></td><td class="c">158.1 ms</td><td class="c st-success">success</td></tr><tr class="phA"><td class="n">2</td><td><code>duty-cli alert analyze</code></td><td class="c">159.2 ms</td><td class="c st-success">success</td></tr><tr class="phB"><td class="n">3</td><td><code>duty-cli service-graph search</code></td><td class="c">563.3 ms</td><td class="c st-success">success</td></tr><tr class="phB"><td class="n">4</td><td><code>duty-cli service-graph show</code></td><td class="c">1.32 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">5</td><td><code>prometheus-query cat deps</code></td><td class="c">8.61 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">6</td><td><code>duty-cli log search</code></td><td class="c">25.7 ms</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">7</td><td><code>prometheus-query cat overview</code></td><td class="c">1.72 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">8</td><td><code>prometheus-query cat deps</code></td><td class="c">7.07 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">9</td><td><code>prometheus-query cat overview</code></td><td class="c">611.6 ms</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">10</td><td><code>prometheus-query cat code</code></td><td class="c">2.91 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">11</td><td><code>prometheus-query cat span</code></td><td class="c">274.9 ms</td><td class="c st-success">success</td></tr></tbody></table><table class="grow ct"><thead><tr><th style="width:30px">#</th><th>工具</th><th class="c" style="width:78px">耗时</th><th class="c" style="width:64px">状态</th></tr></thead><tbody><tr class="phC"><td class="n">12</td><td><code>prometheus-query cat callers</code></td><td class="c">8.52 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">13</td><td><code>prometheus-query cat code</code></td><td class="c">1.03 s</td><td class="c st-success">success</td></tr><tr class="phC"><td class="n">14</td><td><code>duty-cli log search</code></td><td class="c">3.64 s</td><td class="c st-partial">partial</td></tr><tr class="phC"><td class="n">15</td><td><code>duty-cli log search</code></td><td class="c">10.04 s</td><td class="c st-partial">partial</td></tr><tr class="phD"><td class="n">16</td><td><code>prometheus-query panel-query</code></td><td class="c">16.5 ms</td><td class="c st-failed">failed</td></tr><tr class="phD"><td class="n">17</td><td><code>duty-cli service-graph tables</code></td><td class="c">1.60 s</td><td class="c st-success">success</td></tr><tr class="phD"><td class="n">18</td><td><code>prometheus-query cat deps</code></td><td class="c">4.05 s</td><td class="c st-success">success</td></tr><tr class="phD"><td class="n">19</td><td><code>duty-cli data get-table-schema</code></td><td class="c">390.1 ms</td><td class="c st-success">success</td></tr><tr class="phD"><td class="n">20</td><td><code>duty-cli data get-table-schema</code></td><td class="c">358.9 ms</td><td class="c st-success">success</td></tr><tr class="phD"><td class="n">21</td><td><code>duty-cli data query-table</code></td><td class="c">122.4 ms</td><td class="c st-failed">failed</td></tr></tbody></table></div><div class="row c2 c3x" style="gap:10px"><div class="claim"><h3>前四步，就是第 9 页那条路</h3><p>先 alert analyze 复核告警，再 search 找候选、show 取身份。先按告警维度复核（入口①），下钻缺服务身份时用入口③补：search → show</p></div><div class="claim"><h3>没查到的，被标了出来</h3><p>2 条日志查询 partial，面板查询和库表点查 failed；成功的 17 条也可能是空结果</p></div><div class="claim"><h3>工具执行不是主要耗时</h3><p>21 条耗时逐条相加约 53 秒，首报 9.0 分钟（并发未扣除，也可能不止 21 条）</p></div></div></div>
+</section>
+<section class="slide fit" data-notes="附录 I，供追问：JEV 阈值 0.85 与 0.65、20 秒间隔、去重、群设置版本核对、摘要与结论不一致时的更正、隐私处理。">
+<header class="hd"><span class="sec">附录 I</span><span class="sep"></span><span class="ttl">开口判断的细节</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 11 页 · 说出口｜</span>四个时刻的完整规则，<span style="color:var(--accent)">以及“值得说”的判据</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:8px">
+  <div class="subh" style="margin-top:0">四个要不要开口的时刻</div>
+  <table class="grow "><thead><tr><th style="width:170px">时刻</th><th style="width:150px">要回答的问题</th><th>怎么决定</th></tr></thead><tbody><tr><td><b>① 群里有人说话，没 @ 它</b></td><td>是在跟它说话吗？</td><td><span class="lay j">JEV</span> 判断；很有把握（≥ 85%）才接话，拿不准就不接</td></tr><tr><td><b>② 调查中有了新进展</b></td><td>值得告诉大家吗？</td><td><span class="lay j">JEV</span> 判断；有新信息才发（≥ 65%），两条之间至少隔 20 秒</td></tr><tr><td><b>③ 结论摘要刚写好</b></td><td>能不能先发？</td><td>程序直接截取摘要先发，不等全文写完　<span class="pill warn">已实现，上线待确认</span></td></tr><tr><td><b>④ 最终结论</b></td><td>发到哪？</td><td>自动投递：<b>有实锤才进业务群</b>，没实锤只进观察群；群里提问：一定回复</td></tr></tbody></table>
+  <div class="row c2" style="gap:12px;align-items:start">
+    <div class="pt">
+      <div class="subh" style="margin-top:0">难点：“值得说”没有标准答案</div>
+      <div class="yn">
+        <div class="y"><h4>值得说</h4><ul><li>新的报错、状态、时间</li><li>排除了一个怀疑</li><li>查不下去了，被卡住</li></ul></div>
+        <div class="n"><h4>不值得说</h4><ul><li>只是计划接下来查什么</li><li>只说“查到 3 条”，没说内容</li><li>想起一个相似历史案例</li></ul></div>
+      </div>
+    </div>
+    <div class="pt">
+      <div class="subh" style="margin-top:0">原则：拿不准时，宁可不说</div>
+      <div class="card"><ul><li>JEV 出错或超时：不接话，少发一条进展；<b>最终结论照发</b></li><li>群设置改了：按新设置来，之前排队的通知作废</li><li>先发的摘要和最终结论不一致：在原消息下补一条更正，不悄悄改</li></ul></div>
+    </div>
+  </div>
+  <div class="quote">说进展比发结论宽松：“排除了一个怀疑”值得说，但它不算实锤，进不了业务群</div>
+</div>
+</section>
+<section class="slide" id="s28" data-notes="附录 J，供追问：群记忆、闭环经验与历史归档在来源、可改性、使用方式和可信度上的对照。群记忆是 Claude 原生自动记忆，Agent 在调查中自己写，没人审核，群聊开工时自动加载；闭环经验要确认处理结果后才入库，只读，开工只带最近 30 天、最多 50 条的索引；历史归档是部署时一次性导入的冻结旧对话，聊天中不再更新，开工只给一份索引，开头就写明仅供参考、不作为当前事实。">
+<header class="hd"><span class="sec">附录 J</span><span class="sep"></span><span class="ttl">三种积累对照：记忆、经验、历史</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 13 页 · 群记忆、闭环经验与历史归档｜</span>三种积累，<span style="color:var(--accent)">可信度和用法不同</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:9px"><table class="grow "><thead><tr><th style="width:92px"></th><th>群记忆 memory/</th><th>闭环经验 lessons/</th><th>历史归档 history/</th></tr></thead><tbody><tr><td><b>是什么</b></td><td>Agent 在调查中自己记下的群知识</td><td>处理完、结果确认过的历史案例；分 Q&amp;A 和排查经验</td><td>一次性归档的旧对话，只留查询线索</td></tr><tr><td><b>谁写的</b></td><td>Agent 自己，没人审核</td><td>调查记录整理入库；先是候选，确认处理结果后才闭环</td><td>部署时一次性导入，之后不再更新</td></tr><tr><td><b>能改吗</b></td><td>可以，随时写</td><td>只读</td><td>只读，冻结</td></tr><tr><td><b>下次怎么用</b></td><td>群聊开工时自动加载</td><td>开工带索引（最近 30 天、最多 50 条），按现象匹配，正文按需读</td><td>开工只带索引，开头写明“仅供参考、不作当前事实”</td></tr><tr><td><b>可信度</b></td><td class="muted">未经确认</td><td>较高，但仍只是线索</td><td>最弱，只用来加速命中</td></tr></tbody></table></div>
+</section>
+
+<section class="slide" data-notes="附录 K，对应第 17 页：同题复跑的工程 Stage1 Bench，代码在 duty-robot 仓库根的 eval/stage1。五个部分：题库、被测对象、现场复原、取证工具、编排。题库 24 道题，题面从复盘和真人反馈原样摘录，标准答案、复盘全文只给评分用；仓库里这些题都标着还未准入为真实首报。被测对象 oncall-v2 默认读线上发布的同一套提示词，加 --prompt-version 可以换版本比较，不改发布目录。现场复原：Agent 发出的查询先真实执行，Mock 模型看历史现场，决定原样保留还是改写，改写要有来源；只验证链路的题用只保留模式，任何改写都会被拒绝。评分：脚本先机械统计耗时、步数、CLI 次数和 token；评分模型再给被测 Agent 六项、Mock 五项打分，各有一票否决；业务调查和交付门禁分开写，规定不准合成综合准确率。模型评估只在一台 macOS 本机上跑，模型是 deepseek-flash。">
+<header class="hd"><span class="sec">附录 K</span><span class="sep"></span><span class="ttl">同题复跑：Bench 怎么搭</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">对应第 17 页｜</span>题、被测对象、现场复原分开，<span style="color:var(--accent)">只换一处，其他都固定</span></p>
+<div class="body fill tight bs" style="padding-top:0;gap:8px"><table class="grow apk"><thead><tr><th style="width:96px">部分</th><th style="width:200px">位置（eval/stage1/ 下）</th><th>做什么</th></tr></thead><tbody><tr><td><b>题库</b></td><td><code>cases/</code></td><td>24 道题：题面原样摘录，标准答案和复盘只给评分用；都还未准入为真实首报</td></tr><tr><td><b>被测对象</b></td><td><code>subjects/</code></td><td>oncall-v2 默认读线上同一套提示词；<code>--prompt-version</code> 换版本，不动发布目录</td></tr><tr><td><b>现场复原</b></td><td><code>mock/</code></td><td>查询先真实执行；Mock 可保留或改写返回，改写要有来源；只验链路的题只许保留</td></tr><tr><td><b>取证工具</b></td><td><code>cli/</code></td><td>和线上同一套只读命令，本机构建；只读白名单</td></tr><tr><td><b>编排</b></td><td><code>bin/</code></td><td>选题、建工作区、启动、收报告和轨迹；<code>cases.py run --run-id</code> 编号不能重复</td></tr></tbody></table><div class="row c2" style="gap:12px"><div class="claim"><h3>被测 Agent：六项</h3><p>定位、首证、交棒、交付、过程卫生、效率；绕过取证工具或读到答案，一票否决</p></div><div class="claim"><h3>Mock：五项</h3><p>决策、保真、多轮一致、克制、可靠；主动喂答案或编造结果，一票否决</p></div></div><div class="reuse"><b>两道门</b><span class="do">业务调查和交付门禁分开判，不合成一个综合准确率</span><span class="pre"><i>运行</i>只在一台 macOS 本机，模型 deepseek-flash</span></div></div>
+</section>
+<section class="slide" data-notes="附录 L，供查阅：正文里出现的英文名词，一句话解释和后端类比。">
+<header class="hd"><span class="sec">附录 L</span><span class="sep"></span><span class="ttl">英文名词对照：用后端同学的话说</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead"><span class="from">全册 · 英文名词｜</span>页面上直接用英文名，<span style="color:var(--accent)">这里给一句话解释和后端里的类比</span></p>
+<div class="body fill even tight bs" style="padding-top:0;gap:9px"><table class="grow gl"><thead><tr><th style="width:150px">名词</th><th>通俗解释</th><th style="width:190px">后端类比</th></tr></thead><tbody><tr><td><b>Claude Code</b></td><td>真正跑“想 → 调工具 → 看结果”循环的模型执行程序</td><td>工作流执行引擎</td></tr><tr><td><b>Runtime</b></td><td>我们自己的编排程序：排队、准备、校验、投递</td><td>任务调度服务</td></tr><tr><td><b>HAPI</b></td><td>托管模型进程，让追问接回原会话</td><td>会话管理服务</td></tr><tr><td><b>MCP</b></td><td>模型调用工具的标准协议</td><td>RPC 网关</td></tr><tr><td><b>Harness</b></td><td>包在模型外面的程序：权限、校验、配置</td><td>网关 + 中间件</td></tr><tr><td><b>JEV</b></td><td>只回答“是 / 否”的小模型，用来判断要不要开口</td><td>规则引擎 / 分类器</td></tr><tr><td><b>ledger / outbox</b></td><td>请求先落库再处理；结果先入表再发送</td><td>事务消息 / outbox 模式</td></tr><tr><td><b>session</b></td><td>一次连续的对话，模型记得前面说过什么</td><td>有状态的连接</td></tr><tr><td><b>context.md</b></td><td>启动时给模型的“去哪找东西”清单：目录、手册、命令、服务和术语、本群经验</td><td>服务启动配置 / 索引页</td></tr><tr><td><b>AGENTS.md</b></td><td>这个群的备忘：业务范围、术语、协作习惯，和哪些内容要长期保存</td><td>租户配置</td></tr><tr><td><b>指导手册（guide）</b></td><td>按现象写的操作手册：先查什么、用哪条命令、什么时候停</td><td>运维手册（runbook）</td></tr><tr><td><b>duty-cli</b></td><td>值班取证命令行：只读查日志、指标、变更、库表，人和 Agent 共用</td><td>运维 CLI + 适配层</td></tr><tr><td><b>lessons</b></td><td>已确认处理结果的历史排查案例</td><td>故障库</td></tr><tr><td><b>Bench / Mock</b></td><td>同一道题固定模型反复跑的离线评测；Mock 负责复原当时现场</td><td>回归环境 + 流量回放挡板</td></tr></tbody></table></div>
+</section>
+<section class="slide" id="sM" data-notes="附录 M，供追问：工作区已经不只是我们的做法，各家都有；这一页只做对照。左边这张表只写各家的官方文档能核到的事实，不写推测：Claude Code 每个会话新开上下文窗口，用 CLAUDE.md / AGENTS.md 和自动记忆跨会话，边界靠权限规则和 hooks；Codex Cloud 每个 task 一个工作区，环境可以复用但任务的工作状态彼此隔离，追问在同一个会话里；Copilot coding agent 每个 task 一个会话环境，单次最长 59 分钟、会话数据留 28 天，边界是防火墙白名单和仓库权限；我们这边是群、人/Bot、线程三级，线程临时可回收，满 24 小时换会话不换目录，边界是 Hook 加只读软链，不是 OS 沙箱，记忆放在群根 memory/ 和 lessons/。三条共识：工作区是任务的单位；环境可复用但状态要隔离；文件既是跨会话的记忆，也是权限和审计的单位。我们和他们不一样的地方有两处：一是多了群和个人两个持久层，多数 coding agent 到任务就结束了；二是把“上下文会腐”写成制度，满 24 小时换新会话、目录不换，上一轮的回复明确降级为历史背景，不是本次证据。">
+<header class="hd"><span class="sec">附录 M</span><span class="sep"></span><span class="ttl">工作区：业界在怎么做，我们差在哪</span><span class="meta"><span class="sn"><span>开工</span><span>查</span><span>判</span><span>说</span><span>兜底</span><span>积累</span><span>度量</span></span></span></header>
+<p class="lead">工作区已经是通用做法；差别不在有没有，而在它是<span style="color:var(--accent)">“任务的”还是“组织的”</span>（据各家官方文档，2026-11 核对）</p>
+<div class="body"><table class="ck"><thead><tr><th style="width:112px">谁</th><th style="width:140px">工作区的单位</th><th>生命周期</th><th style="width:186px">边界</th><th style="width:172px">记忆放哪</th></tr></thead><tbody><tr><td><b>Claude Code</b></td><td>一个项目目录（cwd）</td><td>每个会话新开一个上下文窗口；CLAUDE.md / AGENTS.md 与自动记忆跨会话</td><td>权限规则 + hooks</td><td>项目 / 用户 / 组织级记忆文件</td></tr><tr><td><b>OpenAI Codex Cloud</b></td><td>每个 task 一个工作区</td><td>环境可复用，任务的工作状态各自隔离；同一会话里追问</td><td>网络与密钥按域放行</td><td>任务状态、改动文件</td></tr><tr><td><b>GitHub Copilot<br>coding agent</b></td><td>每个 task 一个会话环境</td><td>单次最长 59 分钟；会话数据保留 28 天</td><td>防火墙白名单；按仓库权限只读 / 可写</td><td>会话日志</td></tr><tr class="me"><td><b>DoD 值班机器人</b></td><td>群 → 人/Bot → 线程</td><td>线程临时可回收；满 24 小时换会话不换目录，上一轮回复降级为“历史背景”</td><td>Hook 拦截 + 只读软链；不是 OS 沙箱</td><td>群 memory/ + lessons/，跨调查保留</td></tr></tbody></table><div class="two"><div class="blk"><div class="bh">三条共识</div><ul><li><b>一次任务一个工作区</b>：不是全局临时目录，任务之间不共享状态</li><li><b>环境可复用，状态要隔离</b>：装什么可以共享，查到哪一步不能混</li><li><b>文件既是记忆，也是权限和审计的单位</b>：白名单、只读挂载、日志和 PR 都挂在它上面</li></ul></div><div class="blk"><div class="bh">我们的两处不同</div><ul><li><b>多了两个持久层</b>：群根（群记忆、经验）和个人目录；多数 coding agent 到“任务”就结束了</li><li><b>把“上下文会腐”写成制度</b>：满 24 小时换新会话、目录不换，上一轮回复明确降级为历史背景</li></ul></div></div><div class="foot2">一句话：工作区是任务的单位；我们还让它当组织记忆的入口。</div>
+</div>
+</section>
+
+</div>
+<div class="ft">Private &amp; Confidential · duty-robot 设计分析 · v1.65 草稿</div><div class="pg" id="pg"></div>
+</div>
+<div class="notes" id="notes"></div>
+<div class="nav">
+  <span><button id="prev" aria-label="上一页">←</button> <button id="next" aria-label="下一页">→</button></span>
+  <span id="count"></span>
+  <span><button id="nbtn">讲稿 N</button> <button id="fbtn">全屏 F</button></span>
+</div>
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var bar=document.getElementById('bar'),count=document.getElementById('count'),notes=document.getElementById('notes');
+  var pg=document.getElementById('pg'),stage=document.getElementById('stage');
+  var i=0;
+  function fit(){stage.style.setProperty('--k',Math.min(innerWidth/960,innerHeight/540));}
+  window.addEventListener('resize',fit);fit();
+  function clamp(n){return Math.max(0,Math.min(slides.length-1,n));}
+  function show(n){
+    i=clamp(n);
+    slides.forEach(function(s,k){s.classList.toggle('active',k===i);});
+    slides[i].scrollTop=0;
+    stage.classList.toggle('on-cover',i===0);
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    count.textContent=(i+1)+' / '+slides.length;
+    pg.textContent=(i+1);
+    notes.textContent=slides[i].getAttribute('data-notes')||'';
+    try{history.replaceState(null,'','#'+(i+1));}catch(e){}
+  }
+  function toggleNotes(){notes.classList.toggle('show');}
+  function fullscreen(){
+    try{
+      if(document.fullscreenElement){document.exitFullscreen();}
+      else{document.documentElement.requestFullscreen();}
+    }catch(e){}
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.metaKey||e.ctrlKey||e.altKey)return;
+    var k=e.key;
+    if(k==='ArrowRight'||k==='PageDown'||k===' '||k==='Enter'){e.preventDefault();show(i+1);}
+    else if(k==='ArrowLeft'||k==='PageUp'||k==='Backspace'){e.preventDefault();show(i-1);}
+    else if(k==='Home'){show(0);}
+    else if(k==='End'){show(slides.length-1);}
+    else if(k==='n'||k==='N'){toggleNotes();}
+    else if(k==='f'||k==='F'){fullscreen();}
+  });
+  document.getElementById('prev').onclick=function(){show(i-1);};
+  document.getElementById('next').onclick=function(){show(i+1);};
+  document.getElementById('nbtn').onclick=toggleNotes;
+  document.getElementById('fbtn').onclick=fullscreen;
+  var x0=null;
+  document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX;},{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(x0===null)return;
+    var dx=e.changedTouches[0].clientX-x0;x0=null;
+    if(Math.abs(dx)>60){show(i+(dx<0?1:-1));}
+  },{passive:true});
+  var h=parseInt((location.hash||'').slice(1),10);
+  show(isNaN(h)?0:h-1);
+})();
+</script>
+</body>
+</html>
