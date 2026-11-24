@@ -1,6 +1,6 @@
-# Supply Chain 分享资料
+# Wei.zhong 技术分享资料
 
-本仓库收录三份 Supply Chain 技术分享材料。
+本仓库收录三份 Wei.zhong 技术分享材料。
 
 ## 分享主题
 
